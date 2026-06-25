@@ -1,6 +1,5 @@
 {
   "framework": "nextjs",
-  "rootDirectory": "apps/web",
   "buildCommand": "cd .. && npx turbo run build --filter=@vetrinaria/web",
   "outputDirectory": ".next",
   "installCommand": "cd .. && npx -y pnpm@11 install --no-frozen-lockfile"
