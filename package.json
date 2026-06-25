@@ -1,0 +1,32 @@
+{
+  "name": "vetrinaria",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "turbo test",
+    "db:generate": "pnpm --filter @vetrinaria/db generate",
+    "db:migrate": "DATABASE_URL=postgresql://vet:secret@localhost:5433/vetrinaria pnpm --filter @vetrinaria/db migrate",
+    "db:push": "DATABASE_URL=postgresql://vet:secret@localhost:5433/vetrinaria pnpm --filter @vetrinaria/db push",
+    "db:studio": "pnpm --filter @vetrinaria/db studio",
+    "db:seed": "pnpm --filter @vetrinaria/db seed"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "prettier": "^3.5.0",
+    "prettier-plugin-tailwindcss": "^0.6.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.10",
+    "cookie": "^0.7.0"
+  },
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

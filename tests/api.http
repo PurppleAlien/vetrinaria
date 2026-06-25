@@ -1,0 +1,139 @@
+### ============================================================================
+### Vetrinaria - REST Test Template
+### Usa la extensión "REST Client" de VS Code (humao.rest-client)
+### ============================================================================
+
+### ============================================================================
+### Variables
+### ============================================================================
+@baseUrl = http://localhost:3000
+@adminEmail = admin@vetrinaria.app
+@adminPassword = admin123
+
+### ============================================================================
+### 1. Health Check
+### ============================================================================
+
+### 1.1 Health (público)
+GET {{baseUrl}}/api/health
+
+### ============================================================================
+### 2. Autenticación
+### ============================================================================
+
+### 2.1 Login (obtener cookie de sesión)
+# @name login
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+### 2.2 Obtener sesión actual
+GET {{baseUrl}}/api/auth/session
+
+### ============================================================================
+### 3. Registro
+### ============================================================================
+
+### 3.1 Registrar nuevo usuario
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Test",
+  "lastName": "User",
+  "email": "test@example.com",
+  "password": "test123456"
+}
+
+### ============================================================================
+### 4. Clientes
+### ============================================================================
+
+### 4.1 Listar clientes
+GET {{baseUrl}}/api/clients/list
+
+### 4.2 Buscar clientes
+GET {{baseUrl}}/clients?q=Juan
+
+### ============================================================================
+### 5. Pacientes
+### ============================================================================
+
+### 5.1 Pacientes por cliente (reemplazar :id)
+GET {{baseUrl}}/api/patients/by-client/1
+
+### ============================================================================
+### 6. Citas
+### ============================================================================
+
+### 6.1 Citas por paciente (reemplazar :id)
+GET {{baseUrl}}/api/appointments/by-patient/1
+
+### ============================================================================
+### 7. Notificaciones
+### ============================================================================
+
+### 7.1 Obtener notificaciones (requiere sesión)
+GET {{baseUrl}}/api/notifications
+
+### ============================================================================
+### 8. Veterinarios
+### ============================================================================
+
+### 8.1 Listar veterinarios
+GET {{baseUrl}}/api/users/vets
+
+### ============================================================================
+### 9. Páginas del Dashboard (requieren sesión)
+### ============================================================================
+
+### 9.1 Dashboard
+GET {{baseUrl}}/
+
+### 9.2 Clientes
+GET {{baseUrl}}/clients
+
+### 9.3 Pacientes
+GET {{baseUrl}}/patients
+
+### 9.4 Citas
+GET {{baseUrl}}/appointments
+
+### 9.5 Facturas
+GET {{baseUrl}}/invoices
+
+### 9.6 Inventario
+GET {{baseUrl}}/inventory
+
+### 9.7 Notificaciones
+GET {{baseUrl}}/notifications
+
+### 9.8 Configuración - Backups
+GET {{baseUrl}}/settings/backups
+
+### 9.9 Configuración - Clínicas
+GET {{baseUrl}}/settings/clinics
+
+### ============================================================================
+### 10. Server Actions (requieren sesión + CSRF)
+### NOTA: Las server actions de Next.js requieren POST con header Next-Action.
+### Estos tests son ilustrativos; ejecutar via UI para acciones reales.
+### ============================================================================
+
+### 10.1 Trigger backup (via server action POST)
+POST {{baseUrl}}/settings/backups
+Content-Type: application/x-www-form-urlencoded
+
+### ============================================================================
+### 11. Estados de respuesta esperados
+### ============================================================================
+# 200 OK          - Todo funciona correctamente
+# 302 Found       - Redirección (login no autenticado)
+# 401 Unauthorized - No autenticado (API routes)
+# 403 Forbidden   - Sin permisos suficientes
+# 404 Not Found   - Recurso no encontrado
+# 500 Error       - Error interno del servidor

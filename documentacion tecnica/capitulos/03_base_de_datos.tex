@@ -1,0 +1,608 @@
+\chapter{Base de Datos}
+
+\section{Arquitectura General}
+
+La base de datos utiliza \textbf{PostgreSQL 16} con \textbf{Drizzle ORM 0.41}
+como capa de abstracci\'on. El esquema est\'a compuesto por 14 tablas
+organizadas en torno al concepto de \textbf{multi-tenancy} por filas, donde
+cada registro tiene un \texttt{clinic\_id} que lo asocia a una cl\'{\i}nica
+espec\'{\i}fica.
+
+\subsection{Diagrama de Entidades}
+
+A continuaci\'on se presentan las entidades del sistema agrupadas por dominio:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Tenant root:} clinics
+    \item \textbf{Staff:} users
+    \item \textbf{Relaciones con clientes:} clients, patients
+    \item \textbf{Atenci\'on m\'edica:} appointments, medical\_records, dental\_records
+    \item \textbf{Vacunaci\'on:} vaccines, vaccination\_records
+    \item \textbf{Facturaci\'on:} invoices, invoice\_items
+    \item \textbf{Inventario:} products, suppliers
+    \item \textbf{Comunicaci\'on:} notifications
+\end{itemize}
+
+\section{Definici\'on de Esquemas}
+
+\subsection{clinics --- Tabla Ra\'{\i}z Multi-Tenant}
+
+\begin{lstlisting}[style=typescript, caption=Esquema clinics]
+export const clinics = pgTable('clinics', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  email: text('email'),
+  phone: text('phone'),
+  address: text('address'),
+  settings: jsonb('settings').$type<{
+    theme?: string;
+    locale?: string;
+    timezone?: string;
+    invoicePrefix?: string;
+    taxRate?: number;
+  }>().default({}),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  activeIdx: index('clinics_active_idx').on(table.active),
+}));
+\end{lstlisting}
+
+\subsection{users --- Usuarios del Sistema}
+
+\begin{lstlisting}[style=typescript, caption=Esquema users]
+export const userRoleEnum = [
+  'super_admin', 'admin', 'veterinarian',
+  'technician', 'receptionist'
+] as const;
+
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  phone: text('phone'),
+  role: text('role', { enum: userRoleEnum })
+    .notNull().default('receptionist'),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx: index('users_clinic_id_idx').on(table.clinicId),
+  emailIdx: index('users_email_idx').on(table.email),
+  roleIdx: index('users_role_idx').on(table.role),
+}));
+\end{lstlisting}
+
+\subsection{clients --- Due\~nos de Mascotas}
+
+\begin{lstlisting}[style=typescript, caption=Esquema clients]
+export const clients = pgTable('clients', {
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email'),
+  phone: text('phone').notNull(),
+  address: text('address'),
+  emergencyContact: text('emergency_contact'),
+  notes: text('notes'),
+  metadata: jsonb('metadata'),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:  index('clients_clinic_id_idx').on(table.clinicId),
+  emailIdx:   index('clients_email_idx').on(table.email),
+  phoneIdx:   index('clients_phone_idx').on(table.phone),
+  nameIdx:    index('clients_name_idx').on(table.name),
+}));
+\end{lstlisting}
+
+\subsection{patients --- Pacientes (Mascotas)}
+
+\begin{lstlisting}[style=typescript, caption=Esquema patients]
+export const speciesEnum = ['dog','cat','rabbit','bird','reptile','other'] as const;
+export const genderEnum = ['male','female'] as const;
+
+export const patients = pgTable('patients', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  clientId: integer('client_id').notNull()
+    .references(() => clients.id),
+  name: text('name').notNull(),
+  species: text('species', { enum: speciesEnum }).notNull(),
+  breed: text('breed'),
+  gender: text('gender', { enum: genderEnum }).notNull(),
+  birthDate: date('birth_date'),
+  color: text('color'),
+  weight: jsonb('weight')
+    .$type<{ value: number; date: string }[]>().default([]),
+  microchip: text('microchip'),
+  photoUrl: text('photo_url'),
+  allergies: text('allergies'),
+  notes: text('notes'),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:  index('patients_clinic_id_idx').on(table.clinicId),
+  clientIdx:  index('patients_client_id_idx').on(table.clientId),
+  nameIdx:    index('patients_name_idx').on(table.name),
+  speciesIdx: index('patients_species_idx').on(table.species),
+}));
+\end{lstlisting}
+
+\subsection{appointments --- Citas}
+
+\begin{lstlisting}[style=typescript, caption=Esquema appointments]
+export const appointmentStatusEnum = [
+  'scheduled', 'confirmed', 'checked_in', 'in_exam',
+  'checked_out', 'cancelled', 'no_show',
+] as const;
+
+export const appointmentTypeEnum = [
+  'consultation', 'vaccination', 'surgery', 'emergency',
+  'grooming', 'boarding', 'follow_up', 'other',
+] as const;
+
+export const appointments = pgTable('appointments', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  patientId: integer('patient_id').notNull()
+    .references(() => patients.id),
+  clientId: integer('client_id').notNull()
+    .references(() => clients.id),
+  vetId: integer('vet_id').references(() => users.id),
+  date: date('date').notNull(),
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
+  type: text('type', { enum: appointmentTypeEnum })
+    .notNull().default('consultation'),
+  status: text('status', { enum: appointmentStatusEnum })
+    .notNull().default('scheduled'),
+  notes: text('notes'),
+  room: text('room'),
+  createdBy: integer('created_by').references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:    index('appointments_clinic_id_idx')
+                .on(table.clinicId),
+  patientIdx:   index('appointments_patient_id_idx')
+                .on(table.patientId),
+  clientIdx:    index('appointments_client_id_idx')
+                .on(table.clientId),
+  vetIdx:       index('appointments_vet_id_idx')
+                .on(table.vetId),
+  dateIdx:      index('appointments_date_idx')
+                .on(table.date),
+  statusIdx:    index('appointments_status_idx')
+                .on(table.status),
+  dateStatusIdx: index('appointments_date_status_idx')
+                .on(table.date, table.status),
+  startTimeIdx: index('appointments_start_time_idx')
+                .on(table.startTime),
+}));
+\end{lstlisting}
+
+\subsection{medical\_records --- Historial Cl\'{\i}nico (SOAP)}
+
+\begin{lstlisting}[style=typescript, caption=Esquema medical\_records]
+export const medicalRecords = pgTable('medical_records', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  patientId: integer('patient_id').notNull()
+    .references(() => patients.id),
+  appointmentId: integer('appointment_id')
+    .references(() => appointments.id),
+  subjective: text('subjective'),
+  objective: text('objective'),
+  assessment: text('assessment'),
+  plan: text('plan'),
+  vitals: jsonb('vitals').$type<{
+    weight?: number;
+    temperature?: number;
+    heartRate?: number;
+    respiratoryRate?: number;
+  }>().default({}),
+  diagnosis: text('diagnosis'),
+  createdBy: integer('created_by')
+    .references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:    index('medical_records_clinic_id_idx')
+                .on(table.clinicId),
+  patientIdx:   index('medical_records_patient_id_idx')
+                .on(table.patientId),
+  appointmentIdx: index('medical_records_appointment_id_idx')
+                  .on(table.appointmentId),
+  createdAtIdx: index('medical_records_created_at_idx')
+                .on(table.createdAt),
+}));
+\end{lstlisting}
+
+\subsection{dental\_records --- Odontograma}
+
+\begin{lstlisting}[style=typescript, caption=Esquema dental\_records]
+export type ToothStatusValue =
+  | 'healthy' | 'fractured' | 'missing' | 'worn'
+  | 'calculus' | 'gingivitis' | 'mobility'
+  | 'retained_deciduous' | 'root_remnant' | 'caries'
+  | 'pulp_exposure' | 'other';
+
+export interface ToothCondition {
+  toothNumber: number;
+  status: ToothStatusValue;
+  notes?: string;
+}
+
+export const dentalRecords = pgTable('dental_records', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  patientId: integer('patient_id').notNull()
+    .references(() => patients.id),
+  teeth: jsonb('teeth')
+    .$type<ToothCondition[]>().default([]),
+  notes: jsonb('notes')
+    .$type<Record<string, string>>().default({}),
+  createdBy: integer('created_by')
+    .references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:  index('dental_records_clinic_id_idx')
+              .on(table.clinicId),
+  patientIdx: index('dental_records_patient_id_idx')
+              .on(table.patientId),
+}));
+\end{lstlisting}
+
+\subsection{vaccines --- Cat\'alogo de Vacunas}
+
+\begin{lstlisting}[style=typescript, caption=Esquema vaccines]
+export const vaccines = pgTable('vaccines', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  name: text('name').notNull(),
+  description: text('description'),
+  species: text('species').notNull(),
+  frequencyDays: integer('frequency_days')
+    .notNull().default(365),
+  isCore: boolean('is_core').notNull().default(true),
+  active: boolean('active').notNull().default(true),
+}, (table) => ({
+  clinicIdx:  index('vaccines_clinic_id_idx')
+              .on(table.clinicId),
+  speciesIdx: index('vaccines_species_idx')
+              .on(table.species),
+}));
+\end{lstlisting}
+
+\subsection{vaccination\_records --- Registros de Vacunaci\'on}
+
+\begin{lstlisting}[style=typescript, caption=Esquema vaccination\_records]
+export const vaccinationRecords = pgTable('vaccination_records', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  patientId: integer('patient_id').notNull()
+    .references(() => patients.id),
+  vaccineId: integer('vaccine_id').notNull()
+    .references(() => vaccines.id),
+  appliedDate: date('applied_date').notNull(),
+  nextDueDate: date('next_due_date'),
+  batchNumber: text('batch_number'),
+  applicationSite: text('application_site'),
+  doseNumber: integer('dose_number').default(1),
+  administeredBy: integer('administered_by')
+    .references(() => users.id),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:    index('vaccination_records_clinic_id_idx')
+                .on(table.clinicId),
+  patientIdx:   index('vaccination_records_patient_id_idx')
+                .on(table.patientId),
+  vaccineIdx:   index('vaccination_records_vaccine_id_idx')
+                .on(table.vaccineId),
+  patientDueIdx: index('vaccination_records_patient_due_idx')
+                 .on(table.patientId, table.nextDueDate),
+}));
+\end{lstlisting}
+
+\subsection{invoices e invoice\_items --- Facturaci\'on}
+
+\begin{lstlisting}[style=typescript, caption=Esquemas de facturacion]
+export const invoiceStatusEnum = [
+  'draft', 'issued', 'paid', 'cancelled'
+] as const;
+
+export const invoices = pgTable('invoices', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  clientId: integer('client_id').notNull()
+    .references(() => clients.id),
+  appointmentId: integer('appointment_id')
+    .references(() => appointments.id),
+  invoiceNumber: text('invoice_number').notNull().unique(),
+  subtotal: decimal('subtotal', { precision: 10, scale: 2 })
+    .notNull().default('0'),
+  tax: decimal('tax', { precision: 10, scale: 2 })
+    .notNull().default('0'),
+  total: decimal('total', { precision: 10, scale: 2 })
+    .notNull().default('0'),
+  status: text('status', { enum: invoiceStatusEnum })
+    .notNull().default('draft'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx:      index('invoices_clinic_id_idx')
+                  .on(table.clinicId),
+  clientIdx:      index('invoices_client_id_idx')
+                  .on(table.clientId),
+  statusIdx:      index('invoices_status_idx')
+                  .on(table.status),
+  createdAtIdx:   index('invoices_created_at_idx')
+                  .on(table.createdAt),
+  clinicStatusIdx: index('invoices_clinic_status_idx')
+                   .on(table.clinicId, table.status),
+}));
+
+export const invoiceItems = pgTable('invoice_items', {
+  id: serial('id').primaryKey(),
+  invoiceId: integer('invoice_id').notNull()
+    .references(() => invoices.id),
+  description: text('description').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 })
+    .notNull(),
+  total: decimal('total', { precision: 10, scale: 2 })
+    .notNull(),
+});
+\end{lstlisting}
+
+\subsection{products --- Inventario}
+
+\begin{lstlisting}[style=typescript, caption=Esquema products]
+export const productTypeEnum = [
+  'medication', 'supply', 'food', 'service'
+] as const;
+
+export const products = pgTable('products', {
+  id: serial('id').primaryKey(),
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  name: text('name').notNull(),
+  description: text('description'),
+  type: text('type', { enum: productTypeEnum }).notNull(),
+  sku: text('sku').unique(),
+  price: decimal('price', { precision: 10, scale: 2 }).notNull(),
+  costPrice: decimal('cost_price', { precision: 10, scale: 2 }),
+  stockQuantity: integer('stock_quantity').notNull().default(0),
+  reorderPoint: integer('reorder_point').default(10),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx: index('products_clinic_id_idx').on(table.clinicId),
+  nameIdx:   index('products_name_idx').on(table.name),
+  typeIdx:   index('products_type_idx').on(table.type),
+}));
+\end{lstlisting}
+
+\subsection{suppliers --- Proveedores}
+
+\begin{lstlisting}[style=typescript, caption=Esquema suppliers]
+export const suppliers = pgTable('suppliers', {
+  clinicId: integer('clinic_id').notNull()
+    .references(() => clinics.id),
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  contact: text('contact'),
+  email: text('email'),
+  phone: text('phone'),
+  address: text('address'),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  clinicIdx: index('suppliers_clinic_id_idx').on(table.clinicId),
+  nameIdx:   index('suppliers_name_idx').on(table.name),
+}));
+\end{lstlisting}
+
+\subsection{notifications --- Notificaciones}
+
+\begin{lstlisting}[style=typescript, caption=Esquema notifications]
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull()
+    .references(() => users.id),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  type: text('type', {
+    enum: ['appointment','invoice','client','patient','system']
+  }).notNull().default('system'),
+  link: text('link'),
+  read: boolean('read').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  userIdx:    index('notifications_user_id_idx')
+              .on(table.userId),
+  readIdx:    index('notifications_read_idx')
+              .on(table.read),
+  createdAtIdx: index('notifications_created_at_idx')
+                .on(table.createdAt),
+  userReadIdx: index('notifications_user_read_idx')
+               .on(table.userId, table.read),
+}));
+\end{lstlisting}
+
+\section{Relaciones entre Tablas}
+
+Drizzle ORM permite definir relaciones expl\'{\i}citas que habilitan
+consultas con m\'ultiples joins de forma tipo-safe:
+
+\begin{lstlisting}[style=typescript, caption=Relaciones definidas con drizzle-orm/relations]
+// Pacientes -> Cliente (cada mascota pertenece a un dueno)
+export const patientsRelations = relations(patients, ({ one, many }) => ({
+  client: one(clients, {
+    fields: [patients.clientId],
+    references: [clients.id],
+  }),
+  vaccinationRecords: many(vaccinationRecords),
+}));
+
+// Citas -> Paciente, Cliente, Veterinario
+export const appointmentsRelations = relations(appointments, ({ one }) => ({
+  patient: one(patients, {
+    fields: [appointments.patientId],
+    references: [patients.id],
+  }),
+  client: one(clients, {
+    fields: [appointments.clientId],
+    references: [clients.id],
+  }),
+  veterinarian: one(users, {
+    fields: [appointments.vetId],
+    references: [users.id],
+  }),
+}));
+
+// Historial Clinico -> Paciente, Cita, Usuario (creador)
+export const medicalRecordsRelations = relations(medicalRecords, ({ one }) => ({
+  patient: one(patients, {
+    fields: [medicalRecords.patientId],
+    references: [patients.id],
+  }),
+  appointment: one(appointments, {
+    fields: [medicalRecords.appointmentId],
+    references: [appointments.id],
+  }),
+  createdByUser: one(users, {
+    fields: [medicalRecords.createdBy],
+    references: [users.id],
+  }),
+}));
+\end{lstlisting}
+
+\section{\'Indices}
+
+La migraci\'on \texttt{0004\_brainy\_queen\_noir.sql} crea 38 \'{\i}ndices
+distribuidos as\'{\i}:
+
+\begin{longtable}{|l|l|l|}
+\hline
+\textbf{Tabla} & \textbf{\'Indices} & \textbf{Tipo} \\
+\hline
+\endhead
+users & clinic\_id, email, role & B-tree \\
+clients & clinic\_id, email, phone, name & B-tree \\
+patients & clinic\_id, client\_id, name, species & B-tree \\
+appointments & clinic\_id, patient\_id, client\_id, vet\_id, date,
+               status, (date, status), start\_time & B-tree \\
+medical\_records & clinic\_id, patient\_id, appointment\_id, created\_at & B-tree \\
+products & clinic\_id, name, type & B-tree \\
+suppliers & clinic\_id, name & B-tree \\
+invoices & clinic\_id, client\_id, status, created\_at,
+           (clinic\_id, status) & B-tree \\
+notifications & user\_id, read, created\_at, (user\_id, read) & B-tree \\
+clinics & active & B-tree \\
+vaccines & clinic\_id, species & B-tree \\
+vaccination\_records & clinic\_id, patient\_id, vaccine\_id,
+                       (patient\_id, next\_due\_date) & B-tree \\
+dental\_records & clinic\_id, patient\_id & B-tree \\
+\hline
+\end{longtable}
+
+\section{Migraciones}
+
+Las migraciones se gestionan con \textbf{Drizzle Kit} y se almacenan en
+\texttt{packages/db/drizzle}. El orden de migraciones es:
+
+\begin{lstlisting}[style=json, caption=\_journal.json - orden de migraciones]
+{
+  "entries": [
+    { "idx": 0, "tag": "0000_jazzy_penance" },      // Schema inicial
+    { "idx": 1, "tag": "0001_black_shard" },         // Facturacion
+    { "idx": 2, "tag": "0002_notifications" },       // Notificaciones
+    { "idx": 3, "tag": "0003_multi-tenant" },        // Multi-tenant
+    { "idx": 4, "tag": "0004_brainy_queen_noir" },   // 38 indices
+    { "idx": 5, "tag": "0005_square_songbird" },     // Vacunas
+    { "idx": 6, "tag": "0006_young_dental_records" } // Odontograma
+  ]
+}
+\end{lstlisting}
+
+\subsection{Migraci\'on 0000 --- Esquema Inicial}
+
+Crea las tablas: \texttt{users}, \texttt{clients}, \texttt{patients},
+\texttt{appointments}, \texttt{medical\_records}, \texttt{products},
+\texttt{suppliers}. Sin columna \texttt{clinic\_id} (pre-multi-tenant).
+
+\subsection{Migraci\'on 0001 --- Facturaci\'on}
+
+Agrega \texttt{invoices} e \texttt{invoice\_items}.
+
+\subsection{Migraci\'on 0002 --- Notificaciones}
+
+Agrega \texttt{notifications}.
+
+\subsection{Migraci\'on 0003 --- Multi-Tenant}
+
+Migraci\'on cr\'{\i}tica que:
+
+\begin{enumerate}
+    \item Crea la tabla \texttt{clinics} e inserta la cl\'{\i}nica por defecto.
+    \item Agrega \texttt{clinic\_id} nullable a 8 tablas existentes.
+    \item Actualiza registros existentes con el ID de la cl\'{\i}nica por defecto.
+    \item Establece NOT NULL y agrega llaves for\'aneas.
+\end{enumerate}
+
+\subsection{Migraci\'on 0004 --- \'Indices}
+
+Crea 38 \'{\i}ndices B-tree para optimizar consultas.
+
+\subsection{Migraciones 0005 y 0006}
+
+Agregan los m\'odulos de vacunaci\'on y odontograma respectivamente.
+
+\section{Datos Semilla}
+
+El archivo \texttt{packages/db/src/seed.ts} (534 l\'{\i}neas) genera datos
+de prueba realistas:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{1 cl\'{\i}nica:} ``Cl\'{\i}nica Veterinaria Central'' con
+          configuraci\'on mexicana.
+    \item \textbf{5 usuarios:} super\_admin, 2 veterinarios, recepcionista,
+          t\'ecnico (pass: \texttt{admin123}).
+    \item \textbf{15 clientes:} Due\~nos con datos completos.
+    \item \textbf{22 pacientes:} 13 perros, 6 gatos, 2 aves, 2 conejos.
+    \item \textbf{10 vacunas:} Con frecuencias y especies objetivo.
+    \item \textbf{20 registros de vacunaci\'on.}
+    \item \textbf{5 proveedores} y \textbf{30 productos.}
+    \item \textbf{34 citas:} Con estados variados (programadas, confirmadas,
+          canceladas, etc.).
+    \item \textbf{8 registros m\'edicos} en formato SOAP.
+    \item \textbf{2 registros dentales} con condiciones de dientes.
+    \item \textbf{12 facturas} con partidas y estados variados.
+    \item \textbf{11 notificaciones.}
+\end{itemize}
+
+El script limpia todas las tablas en orden de dependencias antes de insertar.

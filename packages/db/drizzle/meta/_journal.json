@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1780177136963,
+      "tag": "0000_jazzy_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780186912420,
+      "tag": "0001_black_shard",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780189350014,
+      "tag": "0002_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780189899491,
+      "tag": "0003_multi-tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780260074817,
+      "tag": "0004_brainy_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780272157559,
+      "tag": "0005_square_songbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780880400000,
+      "tag": "0006_young_dental_records",
+      "breakpoints": true
+    }
+  ]
+}

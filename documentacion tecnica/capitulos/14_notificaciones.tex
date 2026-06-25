@@ -1,0 +1,207 @@
+\chapter{M\'odulo de Notificaciones}
+
+\section{Descripci\'on General}
+
+El sistema de notificaciones proporciona alertas en tiempo real para
+eventos importantes del sistema. Las notificaciones se almacenan en la
+base de datos y se entregan al usuario mediante polling peri\'odico.
+
+\section{Esquema}
+
+La tabla \texttt{notifications} almacena:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{user\_id}: Usuario destinatario.
+    \item \texttt{title}: T\'{\i}tulo corto.
+    \item \texttt{message}: Mensaje descriptivo.
+    \item \texttt{type}: Categor\'{\i}a (appointment, invoice, client,
+          patient, system).
+    \item \texttt{link}: URL opcional de destino al hacer clic.
+    \item \texttt{read}: Estado de lectura (boolean).
+\end{itemize}
+
+\section{Server Actions}
+
+\begin{lstlisting}[style=typescript, caption=Notificaciones - Acciones principales]
+// Crear notificacion individual
+export async function createNotification(data: CreateNotificationInput) {
+  await db.insert(schema.notifications).values({
+    userId: data.userId,
+    title: data.title,
+    message: data.message,
+    type: data.type,
+    link: data.link || null,
+  });
+  revalidatePath('/');
+}
+
+// Obtener notificaciones del usuario (ultimas 50)
+export async function getNotifications() {
+  const session = await auth();
+  if (!session?.user?.id) return [];
+
+  return db
+    .select()
+    .from(schema.notifications)
+    .where(eq(schema.notifications.userId,
+              Number(session.user.id)))
+    .orderBy(desc(schema.notifications.createdAt))
+    .limit(50);
+}
+
+// Contar no leidas
+export async function getUnreadCount(): Promise<number> {
+  const session = await auth();
+  if (!session?.user?.id) return 0;
+
+  return db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.notifications)
+    .where(and(
+      eq(schema.notifications.userId, Number(session.user.id)),
+      eq(schema.notifications.read, false),
+    ))
+    .then(r => Number(r[0]?.count ?? 0));
+}
+
+// Marcar como leida
+export async function markAsRead(id: number) {
+  const session = await auth();
+  await db
+    .update(schema.notifications)
+    .set({ read: true })
+    .where(and(
+      eq(schema.notifications.id, id),
+      eq(schema.notifications.userId, Number(session.user.id)),
+    ));
+  revalidatePath('/notifications');
+}
+\end{lstlisting}
+
+\section{Notificaciones Masivas}
+
+\subsection{Nueva Cita}
+
+\begin{lstlisting}[style=typescript, caption=notifyNewAppointment]
+export async function notifyNewAppointment(data: {
+  clientName: string;
+  patientName: string;
+  date: string;
+  time: string;
+  vetIds: number[];
+}) {
+  const title = 'Nueva cita programada';
+  const message = `${data.clientName} agendo cita para ` +
+                  `${data.patientName} el ${data.date} ` +
+                  `a las ${data.time}`;
+
+  // Notificar al veterinario y a todos los administradores
+  const admins = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.role, 'admin'));
+
+  const allIds = [...new Set([
+    ...data.vetIds,
+    ...admins.map(a => a.id)
+  ])];
+
+  // Insercion bulk
+  if (allIds.length > 0) {
+    await db.insert(schema.notifications).values(
+      allIds.map(userId => ({
+        userId, title, message,
+        type: 'appointment' as const,
+        link: '/appointments',
+      }))
+    );
+  }
+}
+\end{lstlisting}
+
+\section{Navbar con Campana}
+
+El componente \texttt{Navbar} integra las notificaciones con actualizaci\'on
+autom\'atica cada 15 segundos:
+
+\begin{lstlisting}[style=typescript, caption=Navbar - Polling de notificaciones]
+// Estado local
+const [notifications, setNotifications] = useState<Notification[]>([]);
+const [unreadCount, setUnreadCount] = useState(0);
+
+// Fetch inicial y polling cada 15 segundos
+const fetchNotifications = useCallback(async () => {
+  try {
+    const res = await fetch('/api/notifications');
+    if (res.ok) {
+      const data = await res.json();
+      setNotifications(data.notifications ?? []);
+      setUnreadCount(data.unread ?? 0);
+    }
+  } catch {}
+}, []);
+
+useEffect(() => {
+  fetchNotifications();
+  const interval = setInterval(fetchNotifications, 15000);
+  return () => clearInterval(interval);
+}, [fetchNotifications]);
+\end{lstlisting}
+
+\section{Disparadores Autom\'aticos}
+
+Las notificaciones se crean autom\'aticamente en:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Crear cita:} Notifica al veterinario asignado y
+          administradores.
+    \item \textbf{Crear cliente:} Notifica a administradores.
+    \item \textbf{Crear factura:} Notifica a administradores y
+          recepcionistas.
+\end{itemize}
+
+\section{P\'agina de Notificaciones}
+
+La p\'agina \texttt{/notifications} ofrece:
+
+\begin{itemize}[leftmargin=*]
+    \item Lista completa de notificaciones.
+    \item Icono por tipo (appointment=Calendar, invoice=Receipt,
+          client=Users, patient=PawPrint, system=Info).
+    \item Resaltado visual de no le\'{\i}das (borde + fondo tenue).
+    \item Bot\'on ``Ver'' para notificaciones con enlace.
+    \item Botones ``Le\'{\i}do'' individual y ``Marcar todas le\'{\i}das''.
+    \item Estado vac\'{\i}o con icono y mensaje.
+\end{itemize}
+
+\section{API Endpoint}
+
+\begin{lstlisting}[style=typescript, caption=GET /api/notifications - Endpoint JSON]
+export async function GET() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json(
+      { error: 'No autorizado' }, { status: 401 }
+    );
+  }
+
+  const [unread, recent] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` })
+      .from(schema.notifications)
+      .where(and(
+        eq(schema.notifications.userId, Number(session.user.id)),
+        eq(schema.notifications.read, false),
+      ))
+      .then(r => Number(r[0]?.count ?? 0)),
+
+    db.select()
+      .from(schema.notifications)
+      .where(eq(schema.notifications.userId,
+                Number(session.user.id)))
+      .orderBy(desc(schema.notifications.createdAt))
+      .limit(5),
+  ]);
+
+  return NextResponse.json({ unread, notifications: recent });
+}
+\end{lstlisting}

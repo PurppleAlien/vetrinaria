@@ -1,0 +1,204 @@
+\chapter{Sistema de UI/UX}
+
+\section{Tecnolog\'ias}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{TailwindCSS v4:} Framework de estilos utility-first con
+          configuraci\'on via CSS.
+    \item \textbf{shadcn/ui:} Componentes base accesibles construidos sobre
+          Radix UI.
+    \item \textbf{Framer Motion:} Animaciones declarativas con API de spring.
+    \item \textbf{next-themes:} Soporte de tema claro/oscuro/sistema.
+    \item \textbf{lucide-react:} Iconos SVG consistentes.
+    \item \textbf{Radix UI:} Primitivos accesibles para UI.
+\end{itemize}
+
+\section{Sistema de Temas de Color}
+
+El archivo \texttt{globals.css} define 6 temas de color mediante variables
+CSS personalizadas:
+
+\begin{lstlisting}[style=css, caption=Temas de color en CSS]
+[data-theme-color="blue"] {
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --ring: 221.2 83.2% 53.3%;
+}
+
+[data-theme-color="terracota"] {
+  --primary: 12 76% 61%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 12 76% 61%;
+}
+
+[data-theme-color="pink"] {
+  --primary: 336 80% 58%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 336 80% 58%;
+}
+
+[data-theme-color="purple"] {
+  --primary: 271 81% 56%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 271 81% 56%;
+}
+
+[data-theme-color="green"] {
+  --primary: 142 76% 36%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 142 76% 36%;
+}
+
+[data-theme-color="orange"] {
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 24 95% 53%;
+}
+\end{lstlisting}
+
+\subsection{ThemeColorSwitcher}
+
+El componente \texttt{ThemeColorSwitcher} es un bot\'on flotante (FAB) en
+la esquina inferior derecha que:
+
+\begin{itemize}[leftmargin=*]
+    \item Muestra 6 opciones de color con indicador de selecci\'on activa.
+    \item Usa Framer Motion para animaciones de apertura/cierre.
+    \item Almacena la preferencia mediante un custom hook
+          (\texttt{use-theme-color}).
+    \item Cambia el atributo \texttt{data-theme-color} en el documento.
+\end{itemize}
+
+\section{Tema Claro/Oscuro}
+
+\begin{itemize}[leftmargin=*]
+    \item Implementado con \texttt{next-themes}.
+    \item Soporta tema claro, oscuro y seguimiento del sistema.
+    \item Bot\'on de toggle en la Navbar con iconos Sun/Moon.
+    \item Variables CSS en \texttt{:root} (claro) y \texttt{.dark} (oscuro).
+\end{itemize}
+
+\section{Componentes shadcn/ui}
+
+Los componentes UI base siguen la convenci\'on \texttt{cn()} para fusi\'on
+de clases:
+
+\begin{lstlisting}[style=typescript, caption=Funcion cn() para fusion de clases]
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+\end{lstlisting}
+
+Componentes implementados:
+
+\begin{longtable}{|l|l|}
+\hline
+\textbf{Componente} & \textbf{Caracter\'isticas} \\
+\hline
+Button & 6 variantes (default, destructive, outline, secondary,
+         ghost, link), 4 tama\~nos (default, sm, lg, icon) \\
+Card & Header, content, footer con sem\'antica \\
+Input & Campo de texto con validaci\'on \\
+Label & Etiqueta accesible para formularios \\
+Avatar & Imagen circular con fallback de iniciales \\
+Separator & L\'{\i}nea divisoria horizontal \\
+DropdownMenu & Men\'u contextual desplegable con items \\
+Textarea & \'Area de texto multil\'{\i}nea \\
+\hline
+\end{longtable}
+
+\section{Layout Responsivo}
+
+\subsection{Sidebar}
+
+\begin{itemize}[leftmargin=*]
+    \item Colapsable en dispositivos m\'oviles (estado local con toggle).
+    \item Animaciones con Framer Motion y \texttt{layoutId} para
+          transiciones fluidas.
+    \item Iconos de mascota decorativos semi-transparentes.
+    \item Navegaci\'on con resaltado de ruta activa.
+    \item Contenido principal con sidebar, navbar y \'area de contenido.
+\end{itemize}
+
+\subsection{Navbar}
+
+\begin{itemize}[leftmargin=*]
+    \item Campana de notificaciones con polling cada 15 segundos y
+          badge de contador.
+    \item Toggle de tema claro/oscuro.
+    \item Men\'u de usuario con avatar, iniciales y cierre de sesi\'on.
+\end{itemize}
+
+\section{Animaciones}
+
+\subsection{Animaciones Personalizadas (CSS)}
+
+\begin{lstlisting}[style=css, caption=Animaciones CSS personalizadas]
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes paw-print {
+  0% { opacity: 0; transform: scale(0) rotate(0deg); }
+  50% { opacity: 0.5; transform: scale(1.2) rotate(10deg); }
+  100% { opacity: 0; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+\end{lstlisting}
+
+\subsection{Framer Motion}
+
+Las animaciones con Framer Motion se utilizan en:
+
+\begin{itemize}[leftmargin=*]
+    \item Transiciones de p\'agina con \texttt{staggerChildren}.
+    \item Sidebar con \texttt{layout} y \texttt{layoutId} para animaciones
+          de colapso/expansi\'on.
+    \item Tarjetas de dashboard con hover (scale + y-offset).
+    \item P\'agina de login con mascotas flotantes, gradientes animados
+          y entradas escalonadas.
+    \item Indicador activo de sidebar con animaci\'on spring.
+\end{itemize}
+
+\section{Layout Principal}
+
+El layout del dashboard usa route groups de Next.js:
+
+\begin{lstlisting}[style=typescript, caption=DashboardLayout - Sidebar + Navbar]
+export default function DashboardLayout({
+  children
+}: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <div className="flex flex-1 flex-col">
+        <Navbar />
+        <main className="flex-1 p-6">{children}</main>
+      </div>
+      <ThemeColorSwitcher />
+    </div>
+  );
+}
+\end{lstlisting}
+
+\section{P\'agina de Login}
+
+La p\'agina de login presenta un dise\~no de dos columnas:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Lado izquierdo (solo escritorio):} Marca con iconos de
+          mascota flotantes, nombre del sistema, tarjetas de caracter\'isticas
+          y huellas animadas. Fondo con gradiente animado.
+    \item \textbf{Lado derecho:} Formulario de inicio de sesi\'on con
+          animaciones de entrada escalonadas, selector de visibilidad de
+          contrase\~na, credenciales de prueba y bot\'on con spinner de carga.
+\end{itemize}

@@ -1,0 +1,162 @@
+\chapter{Testing y Control de Calidad}
+
+\section{Estrategia de Testing}
+
+El proyecto implementa una estrategia de testing en m\'ultiples niveles,
+priorizando pruebas unitarias y funcionales con infraestructura m\'{\i}nima:
+
+\section{Pruebas Unitarias (Vitest)}
+
+\subsection{Configuraci\'on}
+
+\begin{lstlisting}[style=typescript, caption=vitest.config.ts]
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/**/*.test.{ts,tsx}'],
+  },
+});
+\end{lstlisting}
+
+\subsection{Pruebas Existentes}
+
+\texttt{utils.test.ts} --- Pruebas para la funci\'on \texttt{cn()}:
+
+\begin{lstlisting}[style=typescript, caption=Pruebas unitarias para cn()]
+describe('cn', () => {
+  it('combines class names', () => {
+    expect(cn('foo', 'bar')).toBe('foo bar');
+  });
+
+  it('handles conditional classes', () => {
+    expect(cn('base', false && 'hidden')).toBe('base');
+  });
+
+  it('merges tailwind classes correctly', () => {
+    expect(cn('px-4', 'px-2')).toBe('px-2');
+  });
+});
+\end{lstlisting}
+
+\texttt{env.test.ts} --- Pruebas de variables de entorno:
+
+\begin{lstlisting}[style=typescript, caption=Pruebas de variables de entorno]
+describe('Environment Variables', () => {
+  it('DATABASE_URL is defined', () => {
+    expect(process.env.DATABASE_URL).toBeDefined();
+  });
+  it('AUTH_SECRET is defined', () => {
+    expect(process.env.AUTH_SECRET).toBeDefined();
+  });
+});
+\end{lstlisting}
+
+\section{Pruebas Funcionales}
+
+\subsection{Script de Testing via Bash}
+
+El archivo \texttt{scripts/test.sh} ejecuta pruebas de API:
+
+\begin{lstlisting}[style=bash, caption=test.sh - Pruebas funcionales de API]
+#!/bin/bash
+# Test de health endpoint
+echo "Testing health endpoint..."
+HEALTH=$(curl -s http://localhost:3000/api/health)
+echo "$HEALTH" | grep -q '"status":"healthy"' && \
+  echo "OK" || echo "FAIL"
+
+# Test de rutas protegidas (deben redirigir a login)
+echo "Testing protected routes..."
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  http://localhost:3000/clients)
+[ "$STATUS" = "302" ] && echo "OK" || echo "FAIL"
+
+# Test de rutas publicas
+echo "Testing public routes..."
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  http://localhost:3000/auth/login)
+[ "$STATUS" = "200" ] && echo "OK" || echo "FAIL"
+\end{lstlisting}
+
+\subsection{Script de Testing Integral}
+
+El archivo \texttt{tests/comprehensive-test.ts} (366 l\'{\i}neas) realiza:
+
+\begin{enumerate}
+    \item \textbf{Fase 1:} Health check de la API.
+    \item \textbf{Fase 2:} Verificaci\'on de endpoints sin autenticaci\'on.
+    \item \textbf{Fase 3:} Autenticaci\'on y obtenci\'on de sesi\'on.
+    \item \textbf{Fase 4:} Verificaci\'on de datos de seed en base de datos.
+    \item \textbf{Fase 5:} Verificaci\'on de datos desde API autenticada.
+    \item \textbf{Fase 6:} Conteos de registros en base de datos (40+
+          aserciones).
+\end{enumerate}
+
+\subsection{Pruebas Manuales}
+
+El archivo \texttt{tests/api.http} contiene 20+ ejemplos de peticiones
+REST para VS Code REST Client, cubriendo todos los endpoints del sistema.
+
+\section{CI/CD --- GitHub Actions}
+
+\subsection{Workflow de CI}
+
+\begin{lstlisting}[style=yaml, caption=.github/workflows/ci.yml]
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  build:
+    needs: lint-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+\end{lstlisting}
+
+\section{Pipeline Propuesto (Futuro)}
+
+El plan de arquitectura describe el pipeline completo:
+
+\begin{verbatim}
+Push --> Lint + TypeCheck --> Test (Vitest)
+    --> Build --> Deploy Staging --> E2E Tests (Playwright)
+    --> Deploy Production
+\end{verbatim}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{E2E Tests:} Playwright para pruebas de interfaz gr\'afica.
+    \item \textbf{Load Testing:} k6 o Artillery para pruebas de carga.
+    \item \textbf{Deploy Staging:} Despliegue autom\'atico en entorno de
+          pruebas.
+    \item \textbf{Production Deploy:} Aprobaci\'on manual + deploy a Vercel
+          o Docker.
+\end{itemize}

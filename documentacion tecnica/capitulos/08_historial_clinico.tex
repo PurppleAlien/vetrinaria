@@ -1,0 +1,127 @@
+\chapter{M\'odulo de Historial Cl\'inico}
+
+\section{Descripci\'on General}
+
+El historial cl\'{\i}nico sigue el formato \textbf{SOAP} (Subjetivo,
+Objetivo, Evaluaci\'on, Plan), un est\'andar ampliamente utilizado en
+medicina veterinaria para la documentaci\'on cl\'{\i}nica estructurada.
+
+\section{Estructura SOAP}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{S (Subjective) --- Subjetivo:} Historia cl\'{\i}nica y
+          s\'{\i}ntomas reportados por el due\~no.
+    \item \textbf{O (Objective) --- Objetivo:} Hallazgos del examen f\'{\i}sico.
+    \item \textbf{A (Assessment) --- Evaluaci\'on:} An\'alisis y diagn\'ostico
+          diferencial.
+    \item \textbf{P (Plan) --- Plan:} Tratamiento, medicamentos y seguimiento.
+\end{itemize}
+
+\section{Server Actions}
+
+\subsection{SOAP con Signos Vitales}
+
+\begin{lstlisting}[style=typescript, caption=Interfaz MedicalRecordInput]
+export interface MedicalRecordInput {
+  patientId: number;
+  appointmentId: number | null;
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+  diagnosis: string;
+  vitals: {
+    weight?: number;
+    temperature?: number;
+    heartRate?: number;
+    respiratoryRate?: number;
+  };
+}
+\end{lstlisting}
+
+\subsection{getMedicalRecord --- Detalle Completo}
+
+\begin{lstlisting}[style=typescript, caption=getMedicalRecord - Joins para vista detalle]
+export async function getMedicalRecord(id: number) {
+  const row = await db
+    .select({
+      id: schema.medicalRecords.id,
+      patientId: schema.medicalRecords.patientId,
+      appointmentId: schema.medicalRecords.appointmentId,
+      subjective: schema.medicalRecords.subjective,
+      objective: schema.medicalRecords.objective,
+      assessment: schema.medicalRecords.assessment,
+      plan: schema.medicalRecords.plan,
+      vitals: schema.medicalRecords.vitals,
+      diagnosis: schema.medicalRecords.diagnosis,
+      createdAt: schema.medicalRecords.createdAt,
+      updatedAt: schema.medicalRecords.updatedAt,
+      patientName: schema.patients.name,
+      patientSpecies: schema.patients.species,
+      clientName: schema.clients.name,
+      appointmentDate: schema.appointments.date,
+      createdByName: schema.users.firstName,
+      createdByLastName: schema.users.lastName,
+    })
+    .from(schema.medicalRecords)
+    .innerJoin(schema.patients,
+      eq(schema.medicalRecords.patientId, schema.patients.id))
+    .innerJoin(schema.clients,
+      eq(schema.patients.clientId, schema.clients.id))
+    .leftJoin(schema.appointments,
+      eq(schema.medicalRecords.appointmentId, schema.appointments.id))
+    .leftJoin(schema.users,
+      eq(schema.medicalRecords.createdBy, schema.users.id))
+    .where(eq(schema.medicalRecords.id, id))
+    .then((rows) => rows[0] ?? null);
+
+  return row;
+}
+\end{lstlisting}
+
+\section{P\'aginas}
+
+\subsection{Listado (/medical-records)}
+
+\begin{itemize}[leftmargin=*]
+    \item Filtrado por paciente via \texttt{?patientId=X}.
+    \item Ordenado del m\'as reciente al m\'as antiguo.
+    \item Muestra: diagn\'ostico, fecha, cita asociada y responsable.
+\end{itemize}
+
+\subsection{Creaci\'on (/medical-records/new)}
+
+\begin{itemize}[leftmargin=*]
+    \item Par\'ametros \texttt{?patientId=X\&appointmentId=Y}.
+    \item Formulario SOAP completo con:
+    \item \textbf{Signos vitales:} Peso, temperatura, frecuencia card\'{\i}aca
+          (FC), frecuencia respiratoria (FR) en grid de 4 columnas.
+    \item \textbf{Diagn\'ostico:} Campo de texto.
+    \item \textbf{Secciones SOAP:} 4 \'areas de texto en grid 2$\times$2.
+\end{itemize}
+
+\subsection{Detalle (/medical-records/[id])}
+
+\begin{itemize}[leftmargin=*]
+    \item Diagn\'ostico destacado con borde izquierdo color primario.
+    \item Tarjetas de signos vitales en grid de 4 columnas.
+    \item Cuatro secciones SOAP en grid de 2 columnas.
+    \item Informaci\'on del paciente y cita asociada.
+\end{itemize}
+
+\section{Integraci\'on}
+
+El bot\'on ``Historial Cl\'{\i}nico'' en la p\'agina de detalle del
+paciente enlaza a \texttt{/medical-records?patientId=X}, permitiendo
+acceso directo al historial desde el perfil del paciente.
+
+\section{Datos Semilla}
+
+El seed incluye 8 registros m\'edicos realistas en espa\~nol con:
+
+\begin{itemize}[leftmargin=*]
+    \item Diagn\'osticos variados: otitis, dermatitis, sobrepeso, infecci\'on
+          urinaria, gingivitis, vacunaci\'on, control.
+    \item Signos vitales completos (peso, temperatura, FC, FR).
+    \item Texto SOAP detallado emulando notas cl\'{\i}nicas reales.
+\end{itemize}

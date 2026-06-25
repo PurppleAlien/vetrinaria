@@ -1,0 +1,326 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+\geometry{margin=2.5cm}
+
+\definecolor{codebg}{rgb}{0.95,0.95,0.95}
+\definecolor{codeblue}{rgb}{0.2,0.2,0.6}
+\definecolor{codegreen}{rgb}{0.1,0.5,0.1}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\pagestyle{fancy}
+\lhead{Vetrinaria}
+\rhead{Sprint 0 y 1}
+\cfoot{\thepage}
+
+\title{\vspace{-2cm}\textbf{Vetrinaria}\\[0.3cm]
+\large Sistema de Gestión para Clínicas Veterinarias\\[0.5cm]
+\textbf{Documentación Técnica — Sprint 0 y 1}}
+\author{}
+\date{Mayo 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+\tableofcontents
+\newpage
+
+\section{Resumen Ejecutivo}
+
+Este documento detalla el trabajo realizado durante los Sprint 0 y 1 del proyecto
+\textbf{Vetrinaria}, un sistema integral para la gestión de clínicas veterinarias.
+El objetivo de estos sprints fue establecer la arquitectura base del proyecto y el
+sistema de autenticación.
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sprint 0:} Configuración del monorepo, base de datos, Docker,
+          componentes UI y diseño responsivo.
+    \item \textbf{Sprint 1:} Sistema de autenticación con NextAuth v5, páginas de
+          login/registro y middleware de protección por roles.
+\end{itemize}
+
+\section{Sprint 0 — Setup del Proyecto}
+
+\subsection{Arquitectura del Monorepo}
+
+El proyecto utiliza \textbf{Turborepo} con \textbf{pnpm} como gestor de paquetes,
+organizado en la siguiente estructura:
+
+\begin{lstlisting}[language=bash, caption=Estructura del monorepo]
+vetrinaria/
++-- apps/
+|   +-- web/                    # Next.js 15 App Router
+|       +-- src/
+|           +-- app/            # Rutas y layouts
+|           +-- components/     # Componentes React
+|           +-- lib/            # Utilidades y config
++-- packages/
+|   +-- db/                     # Drizzle ORM + esquemas
+|   +-- shared/                 # Tipos y constantes
+|   +-- config/                 # ESLint, tsconfig base
++-- docker-compose.yml          # Servicios PostgreSQL, MinIO, Redis
++-- turbo.json                  # Configuración de Turborepo
+\end{lstlisting}
+
+Las dependencias se gestionan con \texttt{pnpm-workspace.yaml}, que define los
+workspaces del monorepo. Turborepo permite ejecutar tareas (\texttt{build},
+\texttt{lint}, \texttt{typecheck}) en paralelo con caching inteligente.
+
+\subsection{Configuración de Next.js 15 y TypeScript}
+
+Se configuró \textbf{Next.js 15} con el \textbf{App Router} y \textbf{TypeScript 5.8},
+utilizando configuraciones base compartidas desde \texttt{packages/config}:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{tsconfig.base.json}: Configuración base con ES2022, strict mode,
+          y bundler module resolution.
+    \item \texttt{tsconfig.nextjs.json}: Extiende la base con jsx:preserve y
+          el plugin de Next.js.
+\end{itemize}
+
+El build de Next.js 15 compila exitosamente en aproximadamente 30 segundos
+en el entorno de desarrollo.
+
+\subsection{Base de Datos — PostgreSQL y Docker Compose}
+
+Se implementaron tres servicios en Docker Compose:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{PostgreSQL 16:} Puerto 5433 (evitando conflicto con instalación
+          del sistema en 5432), con usuario \texttt{vet} y base de datos
+          \texttt{vetrinaria}.
+    \item \textbf{MinIO:} Almacenamiento de objetos S3-compatible para archivos
+          (imágenes, radiografías, facturas).
+    \item \textbf{Redis:} Caché y manejo de sesiones.
+\end{itemize}
+
+Todos los contenedores se inician con \texttt{docker compose up -d} y comparten
+una red Docker interna.
+
+\subsection{Esquema de Base de Datos — Drizzle ORM}
+
+Se definieron 7 tablas usando \textbf{Drizzle ORM} con PostgreSQL:
+
+\begin{table}[h]
+\centering
+\caption{Entidades del esquema de base de datos}
+\begin{tabularx}{\textwidth}{|l|X|l|}
+\hline
+\textbf{Tabla} & \textbf{Propósito} & \textbf{Campos clave} \\
+\hline
+\texttt{users} & Usuarios del sistema & email, password\_hash, role \\
+\texttt{clients} & Clientes (dueños de mascotas) & name, email, phone \\
+\texttt{patients} & Pacientes (mascotas) & name, species, breed, client\_id \\
+\texttt{appointments} & Citas veterinarias & date, status, patient\_id, user\_id \\
+\texttt{medical\_records} & Historial clínico & diagnosis, treatment, patient\_id \\
+\texttt{products} & Productos e inventario & name, price, stock \\
+\texttt{suppliers} & Proveedores & name, contact, phone \\
+\hline
+\end{tabularx}
+\end{table}
+
+Las relaciones clave incluyen:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{patients} → \texttt{clients} (FK: \texttt{client\_id})
+    \item \texttt{appointments} → \texttt{patients}, \texttt{clients}, \texttt{users}
+    \item \texttt{medical\_records} → \texttt{patients}, \texttt{appointments}, \texttt{users}
+\end{itemize}
+
+\subsection{TailwindCSS v4 y shadcn/ui}
+
+Se implementó \textbf{TailwindCSS v4} con \textbf{shadcn/ui} para los componentes
+de interfaz. Los componentes base creados son:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Button:} Variantes (default, destructive, outline, secondary,
+          ghost, link) y tamaños (default, sm, lg, icon).
+    \item \textbf{Card:} Contenedor con header, content y footer.
+    \item \textbf{Input:} Campo de texto con validación.
+    \item \textbf{Label:} Etiqueta accesible para formularios.
+    \item \textbf{Avatar:} Imagen circular con fallback de iniciales.
+    \item \textbf{Separator:} Línea divisoria horizontal.
+    \item \textbf{DropdownMenu:} Menú contextual desplegable.
+\end{itemize}
+
+Todos los componentes siguen la convención \texttt{cn()} para fusión de clases
+Tailwind, usando \texttt{clsx} y \texttt{tailwind-merge}.
+
+\subsection{Layout Responsivo}
+
+Se implementó un layout de dos columnas:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sidebar:} Colapsable en móviles, con navegación principal.
+          Utiliza estado global para el toggle y se cierra automáticamente al
+          navegar en dispositivos móviles.
+    \item \textbf{Navbar:} Barra superior con notificaciones, cambio de tema
+          (claro/oscuro) y menú de usuario.
+    \item \textbf{ThemeProvider:} Implementado con \texttt{next-themes}, soporta
+          tema claro, oscuro y seguimiento del sistema.
+\end{itemize}
+
+El layout usa \textbf{route groups} de Next.js para separar la interfaz del
+dashboard (con sidebar/navbar) de las páginas de autenticación (sin ellos).
+
+\subsection{CI/CD — GitHub Actions}
+
+Se configuró un pipeline de CI en \texttt{.github/workflows/ci.yml} que ejecuta
+en cada push a \texttt{main} y cada Pull Request:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Lint:} Verificación de código con ESLint.
+    \item \textbf{Typecheck:} Validación de tipos con TypeScript.
+    \item \textbf{Build:} Compilación de producción.
+\end{enumerate}
+
+\section{Sprint 1 — Autenticación y Roles}
+
+\subsection{NextAuth v5}
+
+Se implementó \textbf{NextAuth v5} (beta 31) con el proveedor de credenciales
+(email y contraseña) y estrategia de sesión JWT:
+
+\begin{lstlisting}[language=TypeScript, caption=Configuración de NextAuth]
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  providers: [
+    Credentials({
+      async authorize(credentials) {
+        // Validar contra BD con bcrypt
+        const user = await db.select().from(schema.users)
+          .where(eq(schema.users.email, email))
+          .then((rows) => rows[0]);
+
+        const isValid = await compare(password, user.passwordHash);
+        if (!isValid) return null;
+
+        return { id: String(user.id), email: user.email,
+                 name: ..., role: user.role };
+      },
+    }),
+  ],
+  session: { strategy: 'jwt' },
+});
+\end{lstlisting}
+
+Los tipos de TypeScript se extendieron para incluir \texttt{role} e \texttt{id}
+en los objetos \texttt{User}, \texttt{Session} y \texttt{JWT}.
+
+\subsection{Páginas de Autenticación}
+
+Se crearon dos páginas en la ruta \texttt{/auth}:
+
+\subsubsection*{Login (\texttt{/auth/login})}
+Formulario con campos de email y contraseña. Utiliza el método
+\texttt{signIn('credentials')} del lado del cliente. Muestra errores de
+credenciales inválidas y redirige al dashboard tras autenticación exitosa.
+
+\subsubsection*{Registro (\texttt{/auth/register})}
+Formulario con nombre, apellido, email y contraseña. Envía los datos a un
+endpoint API (\texttt{POST /api/auth/register}) que hashea la contraseña con
+bcrypt (12 rondas) y crea el usuario en la base de datos con rol
+\texttt{receptionist} por defecto.
+
+\subsection{Middleware de Protección}
+
+Se implementó un middleware que protege las rutas según el estado de
+autenticación y el rol del usuario:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Rutas públicas:} \texttt{/auth/login}, \texttt{/auth/register}
+    \item \textbf{Ruta raíz:} Redirige a login si no hay sesión, al dashboard
+          si la hay.
+    \item \textbf{Protección por rol:} El middleware clasifica las rutas
+          accesibles para cada rol (admin y veterinarian tienen acceso completo;
+          technician y receptionist tienen acceso restringido).
+\end{itemize}
+
+\subsection{Integración con el Layout}
+
+La sesión de usuario se integra en la interfaz a través de:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{SessionProvider:} Envuelve toda la aplicación en el root layout.
+    \item \textbf{Navbar:} Muestra el nombre del usuario autenticado, sus
+          iniciales en el avatar, y permite cerrar sesión.
+    \item \textbf{Dashboard:} Verifica la sesión en el servidor y redirige
+          a login si no está autenticado.
+\end{itemize}
+
+\subsection{Manejo de Errores}
+
+El endpoint de registro valida:
+
+\begin{itemize}[leftmargin=*]
+    \item Todos los campos son obligatorios.
+    \item El email no debe estar registrado previamente.
+    \item Errores internos devuelven HTTP 500.
+\end{itemize}
+
+El login muestra errores genéricos ``Credenciales inválidas'' sin revelar
+si el usuario existe o la contraseña es incorrecta.
+
+\section{Tecnologías Utilizadas}
+
+\begin{table}[h]
+\centering
+\caption{Stack tecnológico del proyecto}
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\textbf{Tecnología} & \textbf{Versión} \\
+\hline
+Next.js & 15.5.18 \\
+TypeScript & 5.8 \\
+TailwindCSS & 4 \\
+pnpm & 11.5 \\
+Turborepo & 2.9 \\
+PostgreSQL & 16 \\
+Drizzle ORM & 0.41 \\
+NextAuth & 5.0.0-beta.31 \\
+Docker Compose & 3.8 \\
+Node.js & 22 \\
+\hline
+\end{tabularx}
+\end{table}
+
+\section{Próximos Pasos}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Sprint 2:} Gestión de Clientes — CRUD completo con tabla,
+          formularios y búsqueda.
+    \item \textbf{Sprint 3:} Gestión de Pacientes — Registro de mascotas
+          vinculadas a clientes.
+    \item \textbf{Sprint 4:} Agenda de Citas — Calendario y programación.
+    \item \textbf{Sprint 5-6:} Historial clínico y módulo de facturación.
+\end{enumerate}
+
+\end{document}

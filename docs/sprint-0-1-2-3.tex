@@ -1,0 +1,1030 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+\geometry{margin=2.5cm}
+
+\definecolor{codebg}{rgb}{0.95,0.95,0.95}
+\definecolor{codeblue}{rgb}{0.2,0.2,0.6}
+\definecolor{codegreen}{rgb}{0.1,0.5,0.1}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\pagestyle{fancy}
+\lhead{Vetrinaria}
+\rhead{Sprints 0--10}
+\cfoot{\thepage}
+
+\title{\vspace{-2cm}\textbf{Vetrinaria}\\[0.3cm]
+\large Sistema de Gestión para Clínicas Veterinarias\\[0.5cm]
+\textbf{Documentación Técnica — Sprints 0 a 10}}
+\author{}
+\date{Mayo 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+\tableofcontents
+\newpage
+
+\section{Resumen Ejecutivo}
+
+Este documento detalla el trabajo realizado durante los sprints del
+proyecto \textbf{Vetrinaria}, un sistema integral para la gestión de clínicas
+veterinarias.
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sprint 0:} Configuración del monorepo, base de datos, Docker,
+          componentes UI y diseño responsivo.
+    \item \textbf{Sprint 1:} Sistema de autenticación con NextAuth v5, páginas de
+          login/registro y middleware de protección por roles.
+    \item \textbf{Sprint 2:} CRUD completo de Clientes (dueños de mascotas).
+    \item \textbf{Sprint 3:} CRUD completo de Pacientes (mascotas vinculadas a clientes).
+    \item \textbf{Sprint 4:} Agenda de Citas --- vista diaria, CRUD completo con
+          transiciones de estado y selectores dependientes.
+    \item \textbf{Sprint 5:} Historial Clínico --- registros SOAP, constantes
+          vitales y vinculación con pacientes/citas.
+    \item \textbf{Sprint 6:} Facturación --- CRUD de productos, proveedores, facturas
+          con IVA 16\% y generación de número secuencial.
+    \item \textbf{Sprint 7:} Dashboard avanzado con métricas reales desde la base
+          de datos (citas, clientes, pacientes, ingresos).
+    \item \textbf{Sprint 8:} Notificaciones --- tabla, migración, servidor de
+          notificaciones, campana en Navbar con contador en vivo y página dedicada.
+    \item \textbf{Sprint 9:} Backups --- creación, listado, restauración y
+          eliminación de copias de seguridad via pg\_dump desde la interfaz web.
+    \item \textbf{Sprint 10:} Multi-tenant --- arquitectura multi-clínica con
+          tabla \texttt{clinics}, migración de esquemas, filtrado por clínica
+          en consultas críticas y gestión desde configuración.
+\end{itemize}
+
+\section{Sprint 0 — Setup del Proyecto}
+
+\subsection{Arquitectura del Monorepo}
+
+El proyecto utiliza \textbf{Turborepo} con \textbf{pnpm} como gestor de paquetes,
+organizado en la siguiente estructura:
+
+\begin{lstlisting}[language=bash, caption=Estructura del monorepo]
+vetrinaria/
++-- apps/
+|   +-- web/                    # Next.js 15 App Router
+|       +-- src/
+|           +-- app/            # Rutas y layouts
+|           +-- components/     # Componentes React
+|           +-- lib/            # Utilidades y config
++-- packages/
+|   +-- db/                     # Drizzle ORM + esquemas
+|   +-- shared/                 # Tipos y constantes
+|   +-- config/                 # ESLint, tsconfig base
++-- docker-compose.yml          # Servicios PostgreSQL, MinIO, Redis
++-- turbo.json                  # Configuración de Turborepo
+\end{lstlisting}
+
+Las dependencias se gestionan con \texttt{pnpm-workspace.yaml}, que define los
+workspaces del monorepo. Turborepo permite ejecutar tareas (\texttt{build},
+\texttt{lint}, \texttt{typecheck}) en paralelo con caching inteligente.
+
+\subsection{Configuración de Next.js 15 y TypeScript}
+
+Se configuró \textbf{Next.js 15} con el \textbf{App Router} y \textbf{TypeScript 5.8},
+utilizando configuraciones base compartidas desde \texttt{packages/config}:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{tsconfig.base.json}: Configuración base con ES2022, strict mode,
+          y bundler module resolution.
+    \item \texttt{tsconfig.nextjs.json}: Extiende la base con jsx:preserve y
+          el plugin de Next.js.
+\end{itemize}
+
+El build de Next.js 15 compila exitosamente en aproximadamente 30 segundos
+en el entorno de desarrollo.
+
+\subsection{Base de Datos --- PostgreSQL y Docker Compose}
+
+Se implementaron tres servicios en Docker Compose:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{PostgreSQL 16:} Puerto 5433 (evitando conflicto con instalación
+          del sistema en 5432), con usuario \texttt{vet} y base de datos
+          \texttt{vetrinaria}.
+    \item \textbf{MinIO:} Almacenamiento de objetos S3-compatible para archivos
+          (imágenes, radiografías, facturas).
+    \item \textbf{Redis:} Caché y manejo de sesiones.
+\end{itemize}
+
+Todos los contenedores se inician con \texttt{docker compose up -d} y comparten
+una red Docker interna.
+
+\subsection{Esquema de Base de Datos --- Drizzle ORM}
+
+Se definieron 7 tablas usando \textbf{Drizzle ORM} con PostgreSQL:
+
+\begin{table}[h]
+\centering
+\caption{Entidades del esquema de base de datos}
+\begin{tabularx}{\textwidth}{|l|X|l|}
+\hline
+\textbf{Tabla} & \textbf{Propósito} & \textbf{Campos clave} \\
+\hline
+\texttt{users} & Usuarios del sistema & email, password\_hash, role \\
+\texttt{clients} & Clientes (dueños de mascotas) & name, email, phone \\
+\texttt{patients} & Pacientes (mascotas) & name, species, breed, client\_id \\
+\texttt{appointments} & Citas veterinarias & date, status, patient\_id, user\_id \\
+\texttt{medical\_records} & Historial clínico & diagnosis, treatment, patient\_id \\
+\texttt{products} & Productos e inventario & name, price, stock \\
+\texttt{suppliers} & Proveedores & name, contact, phone \\
+\texttt{invoices} & Facturas & invoice\_number, total, status \\
+\texttt{invoice\_items} & Partidas de factura & description, quantity, unit\_price \\
+\texttt{notifications} & Notificaciones & title, message, type, read \\
+\hline
+\end{tabularx}
+\end{table}
+
+Las relaciones clave incluyen:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{patients} → \texttt{clients} (FK: \texttt{client\_id})
+    \item \texttt{appointments} → \texttt{patients}, \texttt{clients}, \texttt{users}
+    \item \texttt{medical\_records} → \texttt{patients}, \texttt{appointments}, \texttt{users}
+\end{itemize}
+
+\subsection{TailwindCSS v4 y shadcn/ui}
+
+Se implementó \textbf{TailwindCSS v4} con \textbf{shadcn/ui} para los componentes
+de interfaz. Los componentes base creados son:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Button:} Variantes (default, destructive, outline, secondary,
+          ghost, link) y tamaños (default, sm, lg, icon).
+    \item \textbf{Card:} Contenedor con header, content y footer.
+    \item \textbf{Input:} Campo de texto con validación.
+    \item \textbf{Label:} Etiqueta accesible para formularios.
+    \item \textbf{Avatar:} Imagen circular con fallback de iniciales.
+    \item \textbf{Separator:} Línea divisoria horizontal.
+    \item \textbf{DropdownMenu:} Menú contextual desplegable.
+    \item \textbf{Textarea:} Área de texto multilínea.
+\end{itemize}
+
+Todos los componentes siguen la convención \texttt{cn()} para fusión de clases
+Tailwind, usando \texttt{clsx} y \texttt{tailwind-merge}.
+
+\subsection{Layout Responsivo}
+
+Se implementó un layout de dos columnas:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sidebar:} Colapsable en móviles, con navegación principal.
+          Utiliza estado local para el toggle con icono \texttt{ChevronLeft}.
+          Incluye enlaces a Dashboard, Agenda, Clientes, Pacientes, Historial
+          Clínico, Vacunación, Facturación, Inventario y Mensajes.
+    \item \textbf{Navbar:} Barra superior con notificaciones, cambio de tema
+          (claro/oscuro con \texttt{next-themes}) y menú de usuario con avatar.
+    \item \textbf{ThemeProvider:} Implementado con \texttt{next-themes}, soporta
+          tema claro, oscuro y seguimiento del sistema.
+\end{itemize}
+
+El layout usa \textbf{route groups} de Next.js para separar la interfaz del
+dashboard (ruta \texttt{(dashboard)} con sidebar/navbar) de las páginas de
+autenticación (ruta \texttt{auth}, sin sidebar).
+
+\subsection{CI/CD --- GitHub Actions}
+
+Se configuró un pipeline de CI en \texttt{.github/workflows/ci.yml} que ejecuta
+en cada push a \texttt{main} y cada Pull Request:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Lint:} Verificación de código con ESLint.
+    \item \textbf{Typecheck:} Validación de tipos con TypeScript.
+    \item \textbf{Build:} Compilación de producción.
+\end{enumerate}
+
+\section{Sprint 1 --- Autenticación y Roles}
+
+\subsection{NextAuth v5}
+
+Se implementó \textbf{NextAuth v5} (beta 31) con el proveedor de credenciales
+(email y contraseña) y estrategia de sesión JWT:
+
+\begin{lstlisting}[language=TypeScript, caption=Configuración de NextAuth]
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  providers: [
+    Credentials({
+      async authorize(credentials) {
+        const user = await db.select().from(schema.users)
+          .where(eq(schema.users.email, email))
+          .then((rows) => rows[0]);
+
+        const isValid = await compare(password, user.passwordHash);
+        if (!isValid) return null;
+
+        return { id: String(user.id), email: user.email,
+                 name: ..., role: user.role };
+      },
+    }),
+  ],
+  session: { strategy: 'jwt' },
+});
+\end{lstlisting}
+
+Los tipos de TypeScript se extendieron para incluir \texttt{role} e \texttt{id}
+en los objetos \texttt{User}, \texttt{Session} y \texttt{JWT}.
+
+\subsection{Páginas de Autenticación}
+
+\subsubsection{Login (\texttt{/auth/login})}
+Formulario \texttt{useState} con campos de email y contraseña. Utiliza
+\texttt{signIn('credentials')} del lado del cliente. Muestra errores genéricos
+``Credenciales inválidas'' sin revelar si el usuario existe. Redirige al
+dashboard tras autenticación exitosa.
+
+\subsubsection{Registro (\texttt{/auth/register})}
+Formulario con nombre, apellido, email y contraseña. Envía los datos a
+\texttt{POST /api/auth/register} que hashea la contraseña con bcrypt
+(12 rondas) y crea el usuario con rol \texttt{receptionist} por defecto.
+
+\subsection{Middleware de Protección}
+
+Implementado en \texttt{middleware.ts} con el siguiente comportamiento:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Rutas públicas:} \texttt{/auth/login}, \texttt{/auth/register}
+          --- accesibles sin autenticación.
+    \item \textbf{Sin sesión:} Redirige a \texttt{/auth/login}.
+    \item \textbf{Con sesión en ruta pública:} Redirige a \texttt{/dashboard}.
+    \item \textbf{Protección por rol:} Clasificación de rutas por rol
+          (admin/veterinarian tienen acceso completo; technician/receptionist
+          tienen acceso restringido a módulos específicos).
+\end{itemize}
+
+\subsection{Integración con el Layout}
+
+La sesión se integra mediante:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{SessionProvider:} Envuelve toda la aplicación en el root layout.
+    \item \textbf{Navbar:} Muestra nombre e iniciales del usuario autenticado,
+          con menú desplegable para cerrar sesión.
+    \item \textbf{Dashboard:} Verifica la sesión en el servidor con \texttt{auth()}
+          y redirige a login si no está autenticado.
+\end{itemize}
+
+\subsection{Manejo de Errores}
+
+El registro valida: campos obligatorios, email único, y errores internos
+(HTTP 500). El login usa mensajes genéricos por seguridad.
+
+\section{Sprint 2 --- Gestión de Clientes}
+
+\subsection{Arquitectura}
+
+El módulo de clientes sigue el patrón \textbf{Server Actions} de Next.js 15,
+con un archivo de acciones en \texttt{lib/actions/clients.ts} y páginas
+organizadas bajo la ruta \texttt{/clients}.
+
+\subsection{Server Actions}
+
+\begin{lstlisting}[language=TypeScript, caption=API de server actions para clientes]
+export async function getClients(search?: string)
+export async function getClient(id: number)
+export async function createClient(data: ClientInput)
+export async function updateClient(id: number, data: ClientInput)
+export async function deleteClient(id: number)
+\end{lstlisting}
+
+Las operaciones utilizan Drizzle ORM con validación Zod. Las acciones
+\texttt{createClient} y \texttt{updateClient} revalidan las rutas
+\texttt{/clients} mediante \texttt{revalidatePath}.
+
+\subsection{Páginas}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{/clients} --- Lista con tabla responsiva, búsqueda por
+          query string (\texttt{?q=}) sobre nombre, email y teléfono.
+    \item \texttt{/clients/new} --- Formulario de creación con campos:
+          nombre, email, teléfono, dirección, contacto de emergencia y notas.
+    \item \texttt{/clients/[id]} --- Vista detalle con información de
+          contacto, sección de mascotas (placeholder) y últimas citas.
+    \item \texttt{/clients/[id]/edit} --- Formulario de edición precargado.
+\end{itemize}
+
+\subsection{Componente Reutilizable}
+
+El \texttt{ClientForm} es un componente cliente (\texttt{'use client'}) que
+recibe \texttt{defaultValues} y \texttt{onSubmit} como props. Utiliza estado
+local con \texttt{useState} para manejo de carga y errores. Los campos se
+procesan con \texttt{FormData} nativo del navegador.
+
+\section{Sprint 3 --- Gestión de Pacientes}
+
+\subsection{Esquema de Datos}
+
+La tabla \texttt{patients} incluye:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{client\_id} (FK $\to$ clients) --- Relación con el dueño.
+    \item \texttt{name}, \texttt{species} (enum: dog/cat/rabbit/bird/reptile/other),
+          \texttt{breed}, \texttt{gender} (enum: male/female).
+    \item \texttt{birth\_date}, \texttt{color}, \texttt{microchip},
+          \texttt{allergies}, \texttt{notes}.
+    \item \texttt{weight} (JSONB) --- Historial de pesos.
+    \item \texttt{photo\_url}, \texttt{active}, timestamps.
+\end{itemize}
+
+La relación con \texttt{clients} se define mediante \texttt{relations} de Drizzle.
+
+\subsection{Server Actions}
+
+\begin{lstlisting}[language=TypeScript, caption=API de server actions para pacientes]
+export async function getPatients()
+export async function getPatient(id: number)
+export async function createPatient(data: PatientInput)
+export async function updatePatient(id: number, data: PatientInput)
+export async function deletePatient(id: number)
+\end{lstlisting}
+
+\subsection{Páginas}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{/patients} --- Lista en formato tarjetas (\texttt{Card}) con
+          grid responsivo, mostrando nombre, especie, raza, sexo y dueño.
+    \item \texttt{/patients/new} --- Formulario con selector de dueño (carga
+          desde \texttt{GET /api/clients/list}).
+    \item \texttt{/patients/[id]} --- Vista detalle con información general
+          (especie, raza, sexo, edad, color, microchip, alergias) y datos
+          del dueño. Muestra notas si existen.
+    \item \texttt{/patients/[id]/edit} --- Formulario de edición precargado.
+\end{itemize}
+
+\subsection{Componente Reutilizable}
+
+El \texttt{PatientForm} utiliza un selector de dueños que se carga mediante
+\texttt{fetch('/api/clients/list')} en un \texttt{useEffect}. Los campos de
+especie y sexo usan \texttt{<select>} nativos con etiquetas en español.
+
+\section{Sprint 4 --- Agenda de Citas}
+
+\subsection{Esquema de Datos}
+
+La tabla \texttt{appointments} incluye:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{patient\_id} (FK $\to$ patients), \texttt{client\_id} (FK $\to$ clients),
+          \texttt{vet\_id} (FK $\to$ users) --- Relaciones con paciente, dueño y veterinario.
+    \item \texttt{date}, \texttt{start\_time}, \texttt{end\_time} --- Fecha y hora de la cita.
+    \item \texttt{type} (enum: consultation/vaccination/surgery/...) --- Tipo de consulta.
+    \item \texttt{status} (enum: scheduled/confirmed/checked\_in/...) --- Estado de la cita.
+    \item \texttt{room}, \texttt{notes} --- Sala asignada y notas.
+\end{itemize}
+
+\subsection{Server Actions}
+
+\begin{lstlisting}[language=TypeScript, caption=API de server actions para citas]
+export async function getAppointments(date?: string)
+export async function getAppointment(id: number)
+export async function createAppointment(data: AppointmentInput)
+export async function updateAppointment(id: number, data: AppointmentInput)
+export async function updateAppointmentStatus(id: number, status: string)
+\end{lstlisting}
+
+Además del CRUD estándar, se implementó \texttt{updateAppointmentStatus}
+para transiciones rápidas de estado directamente desde la lista y el detalle.
+
+\subsection{Páginas}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{/appointments?date=YYYY-MM-DD} --- Vista diaria con
+          navegación entre fechas (botones {@literal <} Hoy {@literal >}),
+          botón rápido ``Hoy'', y atajos de cambio de estado (2 acciones
+          rápidas por cita). Muestra hora, paciente, dueño, tipo, sala y
+          veterinario.
+    \item \texttt{/appointments/new} --- Formulario con selectores
+          dependientes: al elegir un dueño se cargan sus mascotas
+          mediante \texttt{GET /api/patients/by-client/[id]}.
+    \item \texttt{/appointments/[id]} --- Detalle completo con estado
+          actual, datos de fecha/hora, responsables, paciente y notas.
+          Incluye panel de transición de estado con los siguientes pasos
+          válidos según el estado actual (por ejemplo: Programada
+          $\to$ Confirmada $\to$ Check-In $\to$ En consulta $\to$ Check-Out).
+    \item \texttt{/appointments/[id]/edit} --- Formulario de edición precargado.
+\end{itemize}
+
+\subsection{Transiciones de Estado}
+
+El flujo de estados sigue esta máquina de estados simple:
+
+\begin{verbatim}
+scheduled --> confirmed --> checked_in --> in_exam --> checked_out
+    |             |
+    +--> cancelled+--> cancelled
+\end{verbatim}
+
+Cada estado solo permite transiciones hacia adelante, evitando cambios
+inválidos. Los estados \texttt{cancelled}, \texttt{checked\_out} y
+\texttt{no\_show} son terminales.
+
+\subsection{Componente Reutilizable}
+
+El \texttt{AppointmentForm} integra tres selectores que se cargan mediante
+APIs:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{GET /api/clients/list} --- Lista de dueños.
+    \item \texttt{GET /api/patients/by-client/[id]} --- Mascotas del dueño
+          seleccionado (carga dinámica con \texttt{useEffect}).
+    \item \texttt{GET /api/users/vets} --- Veterinarios activos.
+\end{itemize}
+
+\section{Sprint 5 --- Historial Clínico}
+
+\subsection{Esquema de Datos}
+
+La tabla \texttt{medical\_records} sigue el formato \textbf{SOAP} (Subjetivo,
+Objetivo, Evaluación, Plan):
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{patient\_id} (FK $\to$ patients), \texttt{appointment\_id}
+          (FK $\to$ appointments), \texttt{created\_by} (FK $\to$ users).
+    \item \texttt{subjective} (S) --- Historia y síntomas reportados.
+    \item \texttt{objective} (O) --- Hallazgos del examen físico.
+    \item \texttt{assessment} (A) --- Análisis y diagnóstico diferencial.
+    \item \texttt{plan} (P) --- Tratamiento y seguimiento.
+    \item \texttt{diagnosis} --- Diagnóstico principal.
+    \item \texttt{vitals} (JSONB) --- Constantes vitales: peso, temperatura,
+          frecuencia cardíaca y respiratoria.
+\end{itemize}
+
+\subsection{Server Actions}
+
+\begin{lstlisting}[language=TypeScript, caption=API de server actions para historial]
+export async function getMedicalRecords(patientId: number)
+export async function getMedicalRecord(id: number)
+export async function createMedicalRecord(data: MedicalRecordInput)
+export async function updateMedicalRecord(id: number, data: MedicalRecordInput)
+\end{lstlisting}
+
+\subsection{Páginas}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{/medical-records?patientId=X} --- Lista de registros de un
+          paciente, ordenada del más reciente al más antiguo. Muestra
+          diagnóstico, fecha, cita asociada y quién lo creó.
+    \item \texttt{/medical-records/new?patientId=X\&appointmentId=Y} ---
+          Formulario SOAP completo con campos para constantes vitales
+          (peso, temperatura, FC, FR), selector de cita asociada y las
+          cuatro secciones SOAP.
+    \item \texttt{/medical-records/[id]} --- Vista detalle con diagnóstico
+          destacado (borde izquierdo color primario), tarjetas de signos
+          vitales en grid 4 columnas, y las cuatro secciones SOAP en grid
+          2 columnas.
+    \item \texttt{/medical-records/[id]/edit} --- Formulario de edición
+          precargado.
+\end{itemize}
+
+\subsection{Integración con Pacientes}
+
+La página de detalle del paciente (\texttt{/patients/[id]}) incluye ahora un
+botón ``Historial'' que enlaza a
+\texttt{/medical-records?patientId=X}, permitiendo acceso directo al
+historial clínico desde el perfil del paciente.
+
+\subsection{Componente Reutilizable}
+
+El \texttt{MedicalRecordForm} implementa:
+
+\begin{itemize}[leftmargin=*]
+    \item Selector de cita asociada, cargado dinámicamente mediante
+          \texttt{GET /api/appointments/by-patient/[id]}.
+    \item Cuatro campos numéricos para constantes vitales en grid.
+    \item Campo de diagnóstico como texto simple.
+    \item Cuatro áreas de texto grandes para las secciones SOAP en grid
+          2x2.
+\end{itemize}
+
+\section{Sprint 6 --- Facturación}
+
+\subsection{Esquema de Datos}
+
+Se agregaron las tablas \texttt{products}, \texttt{suppliers}, \texttt{invoices} e \texttt{invoice\_items}:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{products} --- Productos y servicios con nombre, tipo (medication/supply/food/service),
+          SKU, precio, precio de costo, cantidad en stock y punto de reorden.
+    \item \texttt{suppliers} --- Proveedores con nombre, contacto, email, teléfono y dirección.
+    \item \texttt{invoices} --- Facturas con folio único (\texttt{INV-XXXXXX}), subtotal,
+          IVA (16\%), total, estado (draft/issued/paid/cancelled) y notas.
+    \item \texttt{invoice\_items} --- Partidas de la factura con descripción, cantidad,
+          precio unitario y total calculado.
+\end{itemize}
+
+\subsection{Server Actions}
+
+Se implementaron tres conjuntos de acciones:
+
+\begin{lstlisting}[language=TypeScript, caption=API de server actions para facturación]
+// Productos
+export async function getProducts()
+export async function getProduct(id: number)
+export async function createProduct(data: ProductInput)
+export async function updateProduct(id: number, data: ProductInput)
+
+// Proveedores
+export async function getSuppliers()
+export async function getSupplier(id: number)
+export async function createSupplier(data: SupplierInput)
+export async function updateSupplier(id: number, data: SupplierInput)
+
+// Facturas
+export async function getInvoices()
+export async function getInvoice(id: number)
+export async function createInvoice(data: InvoiceInput)
+export async function updateInvoiceStatus(id: number, status: string)
+\end{lstlisting}
+
+La generación de números de factura es secuencial (\texttt{INV-000001},
+\texttt{INV-000002}, \dots), consultando el último folio en la base de datos
+e incrementando.
+
+\subsection{Páginas}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{/inventory} --- Lista de productos con tabla responsiva, alerta
+          visual cuando el stock está por debajo del punto de reorden.
+    \item \texttt{/inventory/new}, \texttt{/inventory/[id]/edit} --- Formulario
+          de producto con campos: nombre, tipo (select), SKU, precio, precio de costo,
+          stock y punto de reorden.
+    \item \texttt{/suppliers} --- Lista en tarjetas con grid responsivo.
+    \item \texttt{/suppliers/new}, \texttt{/suppliers/[id]/edit} --- Formulario
+          de proveedor.
+    \item \texttt{/invoices} --- Lista de facturas con tabla, colores por estado,
+          botones de acción rápida (Emitir, Pagar).
+    \item \texttt{/invoices/new} --- Formulario de factura con selección de
+          cliente, cita opcional, conceptos dinámicos (agregar/eliminar filas),
+          cálculo automático de subtotal, IVA y total.
+    \item \texttt{/invoices/[id]} --- Detalle de factura con acciones según
+          estado (Emitir, Pagar, Cancelar).
+\end{itemize}
+
+\subsection{Características Destacadas}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{IVA fijo del 16\%} sobre el subtotal, aplicado automáticamente.
+    \item \textbf{Transiciones de estado:} draft $\to$ issued $\to$ paid |
+          cancelled, siguiendo el ciclo de vida real de una factura.
+    \item \textbf{Conceptos dinámicos:} El formulario de factura permite agregar
+          y eliminar filas de conceptos con cálculo en tiempo real.
+    \item \textbf{Selectores dependientes:} Al seleccionar un cliente en la
+          factura, se cargan sus citas disponibles como opción de asociación.
+\end{itemize}
+
+\section{Sprint 7 --- Dashboard con Métricas Reales}
+
+\subsection{Server Action}
+
+Se creó \texttt{lib/actions/dashboard.ts} con la función
+\texttt{getDashboardMetrics()} que ejecuta las siguientes consultas en
+paralelo mediante \texttt{Promise.all}:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Citas hoy:} Conteo total y agrupado por estado.
+    \item \textbf{Total clientes:} Conteo simple.
+    \item \textbf{Total pacientes:} Conteo simple.
+    \item \textbf{Ingresos hoy:} Suma de facturas pagadas con fecha de creación
+          hoy, usando \texttt{coalesce(sum(total),'0')}.
+    \item \textbf{Ingresos del mes:} Suma de facturas pagadas desde el primer
+          día del mes.
+    \item \textbf{Próximas citas:} Join con pacientes y clientes, ordenado por
+          fecha y hora, límite 5.
+    \item \textbf{Actividad reciente:} Últimos 5 registros de clientes, pacientes
+          y facturas, combinados y ordenados por fecha descendente (máximo 10).
+\end{itemize}
+
+\subsection{Páginas Actualizadas}
+
+El dashboard (\texttt{/}) ahora muestra:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{4 tarjetas de resumen} con datos en vivo: Citas Hoy (con
+          desglose de pendientes), Clientes totales, Pacientes totales,
+          Ingresos de hoy y del mes.
+    \item \textbf{Panel de próximas citas} con cards enlazables mostrando hora,
+          paciente, dueño, tipo y estado (con colores semánticos).
+    \item \textbf{Panel de actividad reciente} con eventos de creación de
+          clientes, pacientes y facturas, cada uno con identificador de color
+          por tipo.
+\end{itemize}
+
+\subsection{Manejo de Estados Vacíos}
+
+Cada sección del dashboard maneja correctamente el estado vacío con mensajes
+apropiados y enlaces de acción.
+
+\section{Sprint 8 --- Notificaciones}
+
+\subsection{Esquema de Datos}
+
+Se agregó la tabla \texttt{notifications}:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{user\_id} (FK $\to$ users) --- Usuario destinatario.
+    \item \texttt{title} --- Título de la notificación.
+    \item \texttt{message} --- Cuerpo del mensaje.
+    \item \texttt{type} (enum: appointment/invoice/client/patient/system) ---
+          Categoría para el icono y filtrado.
+    \item \texttt{link} --- URL opcional a la que redirige al hacer clic.
+    \item \texttt{read} (boolean) --- Estado de lectura.
+    \item \texttt{created\_at} --- Marca de tiempo.
+\end{itemize}
+
+Se generó la migración \texttt{0002\_notifications.sql} y se aplicó a la base
+de datos.
+
+\subsection{Server Actions y API}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{createNotification(data)} --- Inserta una notificación para un
+          usuario específico.
+    \item \texttt{getNotifications()} --- Recupera las últimas 50 notificaciones
+          del usuario autenticado.
+    \item \texttt{getUnreadCount()} --- Conteo de notificaciones no leídas.
+    \item \texttt{markAsRead(id)} --- Marca una notificación como leída.
+    \item \texttt{markAllAsRead()} --- Marca todas como leídas.
+    \item \texttt{notifyNewAppointment(...)} --- Crea notificaciones para el
+          veterinario asignado y todos los administradores al agendar una cita.
+    \item \texttt{notifyNewInvoice(...)} --- Crea notificaciones para
+          administradores al crear una factura.
+    \item \texttt{GET /api/notifications} --- Endpoint JSON para la Navbar
+          (cliente), devuelve conteo y últimas 5 notificaciones.
+\end{itemize}
+
+\subsection{Navbar con Campana de Notificaciones}
+
+La Navbar se actualizó para incluir:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Campana} con contador de no leídos (badge rojo con número).
+          Muestra ``9+'' cuando hay más de 9.
+    \item \textbf{Dropdown} con las últimas 5 notificaciones, cada una con
+          icono según el tipo, título, mensaje truncado y punto azul si no
+          está leída.
+    \item \textbf{Actualización automática} cada 15 segundos mediante
+          \texttt{setInterval} y \texttt{fetch} al endpoint.
+    \item \textbf{Link ``Ver todas''} que redirige a la página de notificaciones.
+    \item Al hacer clic en una notificación no leída, se marca automáticamente
+          como leída mediante \texttt{markAsRead}.
+\end{itemize}
+
+\subsection{Página de Notificaciones}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{/notifications} --- Página completa del lado del servidor con
+          lista de todas las notificaciones.
+    \item Muestra icono por tipo, título, mensaje completo, fecha formateada
+          en español.
+    \item Las no leídas tienen resaltado visual (borde y fondo tenue).
+    \item Botón ``Ver'' si la notificación tiene enlace asociado.
+    \item Botón ``Leído'' individual y ``Marcar todas leídas'' en el header.
+    \item Estado vacío con icono y mensaje.
+\end{itemize}
+
+\subsection{Disparadores Automáticos}
+
+Se integraron notificaciones en las siguientes acciones existentes:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{createAppointment}: Notifica al veterinario asignado y a todos
+          los administradores cuando se agenda una cita.
+    \item \texttt{createClient}: Notifica a todos los administradores cuando se
+          registra un nuevo cliente.
+    \item \texttt{createInvoice}: Notifica a administradores y recepcionistas
+          cuando se crea una factura.
+\end{itemize}
+
+\subsection{Navegación}
+
+Se agregó el enlace ``Notificaciones'' en la Sidebar con el icono de campana
+(\texttt{Bell} de lucide-react).
+
+\section{Sprint 9 --- Backups y Restauración}
+
+\subsection{Descripción General}
+
+El sistema de backups permite crear, listar, restaurar y eliminar copias de
+seguridad de la base de datos PostgreSQL directamente desde la interfaz web.
+Los backups se generan en formato \texttt{custom} (\texttt{-Fc}) de pg\_dump,
+que ofrece compresión y la capacidad de restaurar con procesos paralelos.
+
+\subsection{Backup Utility (\texttt{lib/backup.ts})}
+
+Módulo del lado del servidor (\texttt{'server-only'}) que ejecuta comandos
+del sistema mediante \texttt{child\_process.exec}:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{createBackup()} --- Ejecuta \texttt{pg\_dump -Fc} parseando
+          la URL de conexión de \texttt{DATABASE\_URL}. Genera archivos con
+          nombre \texttt{vetrinaria-YYYY-MM-DDTHH-MM-SS.dump} en el directorio
+          \texttt{backups/}.
+    \item \texttt{listBackups()} --- Lee el directorio \texttt{backups/},
+          filtrando archivos \texttt{*.dump}, y devuelve metadatos (nombre,
+          tamaño, fecha de modificación) ordenados del más reciente al más
+          antiguo.
+    \item \texttt{restoreBackup(filename)} --- Ejecuta \texttt{pg\_restore -c}
+          (limpia objetos existentes antes de restaurar) usando el archivo
+          seleccionado. Timeout de 10 minutos.
+    \item \texttt{deleteBackup(filename)} --- Elimina un archivo de backup.
+    \item \texttt{formatSize()} --- Convierte bytes a formato legible (B, KB, MB).
+\end{itemize}
+
+\subsection{Server Actions (\texttt{lib/actions/backups.ts})}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{triggerBackup()} --- Crea un nuevo backup y revalida la ruta.
+    \item \texttt{getBackups()} --- Lista los backups disponibles.
+    \item \texttt{removeBackup(filename)} --- Elimina un backup.
+    \item \texttt{restoreFromBackup(filename)} --- Restaura la base de datos
+          desde el archivo seleccionado.
+\end{itemize}
+
+\subsection{Páginas}
+
+\texttt{/settings} — Centro de configuración con tarjetas enlazables a
+diferentes secciones (Backups, General, Seguridad, Apariencia).
+
+\texttt{/settings/backups} — Gestión completa de backups:
+
+\begin{itemize}[leftmargin=*]
+    \item Botón \textbf{Crear Backup} que ejecuta pg\_dump y muestra el resultado.
+    \item Lista de backups con nombre, tamaño, fecha y acciones:
+          \textbf{Restaurar} (con advertencia de sobreescritura) y
+          \textbf{Eliminar}.
+    \item Panel de advertencia sobre la restauración (card ámbar).
+    \item Panel de configiración de \textbf{Backups Automáticos} con
+          instrucciones para programar via cron.
+    \item Estado vacío con mensaje y llamado a acción.
+\end{itemize}
+
+\subsection{Backups Automáticos (Cron)}
+
+Se incluye el script \texttt{scripts/backup.sh} que puede ejecutarse
+via cron para backups diarios automatizados:
+
+\begin{lstlisting}[language=bash, caption=Programar backup diario a las 2:00 AM]
+0 2 * * * /path/to/vetrinaria/scripts/backup.sh
+\end{lstlisting}
+
+El script parsea \texttt{DATABASE\_URL} de \texttt{.env}, ejecuta pg\_dump
+con formato personalizado y almacena el archivo en \texttt{backups/}.
+
+\subsection{Seguridad}
+
+\begin{itemize}[leftmargin=*]
+    \item El módulo de backup está marcado como \texttt{'server-only'},
+          impidiendo su importación desde el cliente.
+    \item Las server actions verifican la sesión mediante \texttt{auth()}
+          (el middleware de NextAuth protege todas las rutas del dashboard).
+    \item La restauración muestra una advertencia explícita antes de
+          proceder, ya que sobreescribe todos los datos actuales.
+\end{itemize}
+
+\section{Sprint 10 --- Multi-Tenant}
+
+\subsection{Arquitectura}
+
+Se implementó una arquitectura multi-tenant basada en filas (row-based), donde
+cada clínica (tenant) comparte las mismas tablas pero sus datos se aíslan
+mediante la columna \texttt{clinic\_id} en todas las entidades del sistema.
+
+\subsection{Esquema de Datos}
+
+La tabla \texttt{clinics} almacena la información de cada clínica:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{name}, \texttt{slug} (único, para identificación), \texttt{email},
+          \texttt{phone}, \texttt{address}.
+    \item \texttt{settings} (JSONB) --- Configuración específica (tema, locale,
+          timezone, prefijo de factura, tasa de impuesto).
+    \item \texttt{active}, timestamps de creación y actualización.
+\end{itemize}
+
+Se agregó \texttt{clinic\_id} (FK $\to$ clinics) a todas las tablas de datos:
+\texttt{users}, \texttt{clients}, \texttt{patients}, \texttt{appointments},
+\texttt{medical\_records}, \texttt{products}, \texttt{suppliers},
+\texttt{invoices}.
+
+\subsection{Migración}
+
+La migración \texttt{0003\_multi-tenant.sql} maneja datos existentes:
+
+\begin{enumerate}[leftmargin=*]
+    \item Crea la tabla \texttt{clinics} e inserta una clínica por defecto
+          (\texttt{Clínica Principal}).
+    \item Agrega \texttt{clinic\_id} como nullable en todas las tablas.
+    \item Actualiza los registros existentes con el ID de la clínica por defecto.
+    \item Establece la restricción \texttt{NOT NULL}.
+    \item Agrega las llaves foráneas correspondientes.
+\end{enumerate}
+
+\subsection{Rol Super Admin}
+
+Se agregó el rol \texttt{super\_admin} al enum de roles de usuario. Este rol
+tiene acceso completo a todas las clínicas y a la administración del sistema,
+incluyendo la gestión de clínicas.
+
+\subsection{Clinic Context Utility (\texttt{lib/clinic.ts})}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{getCurrentClinicId()} --- Obtiene el ID de la clínica desde
+          la sesión JWT del usuario autenticado.
+    \item \texttt{getCurrentUserRole()} --- Obtiene el rol del usuario actual.
+    \item \texttt{isSuperAdmin()} --- Verifica si el usuario es super admin.
+\end{itemize}
+
+Todas las funciones están marcadas como \texttt{'server-only'}.
+
+\subsection{Autenticación Actualizada}
+
+El archivo \texttt{lib/auth.ts} se actualizó para incluir \texttt{clinicId}
+en el JWT y la sesión. Los tipos de TypeScript se extendieron para incluir
+\texttt{clinicId} en \texttt{User} y \texttt{Session}.
+
+El middleware se actualizó para reconocer el rol \texttt{super\_admin}.
+
+\subsection{Server Actions (\texttt{lib/actions/clinics.ts})}
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{getClinics()} --- Lista todas las clínicas.
+    \item \texttt{getClinic(id)} --- Obtiene una clínica por ID.
+    \item \texttt{createClinic(data)} --- Crea una nueva clínica (con validación
+          Zod del slug).
+    \item \texttt{updateClinic(id, data)} --- Actualiza una clínica existente.
+\end{itemize}
+
+\subsection{Páginas}
+
+\texttt{/settings/clinics} — Lista de clínicas registradas:
+
+\begin{itemize}[leftmargin=*]
+    \item Cada clínica muestra nombre, slug y email.
+    \item Botón para editar cada clínica.
+    \item Botón ``Nueva Clínica'' para crear.
+    \item Estado vacío con mensaje.
+\end{itemize}
+
+\texttt{/settings/clinics/new} — Formulario de creación con campos: nombre,
+slug (validado con regex \texttt{[a-z0-9-]+}), email, teléfono y dirección.
+
+\texttt{/settings/clinics/[id]/edit} — Formulario de edición precargado.
+
+\subsection{Componente Reutilizable}
+
+El \texttt{ClinicForm} es un componente cliente con campo slug validado,
+grid responsivo para email/teléfono, y manejo de errores.
+
+\subsection{Filtrado por Clínica en Consultas}
+
+Se actualizaron las consultas críticas para filtrar por \texttt{clinic\_id}:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Dashboard:} Todas las métricas (citas, clientes, pacientes,
+          ingresos, actividad reciente) filtradas por la clínica del usuario.
+    \item \textbf{Clientes:} Lista y creación filtradas/asignadas a la clínica.
+    \item \textbf{Pacientes:} Lista y creación filtradas/asignadas a la clínica.
+    \item \textbf{Citas:} Lista y creación filtradas/asignadas a la clínica.
+\end{itemize}
+
+\subsection{Datos Semilla}
+
+El script \texttt{seed.ts} se actualizó para:
+
+\begin{itemize}[leftmargin=*]
+    \item Crear una clínica por defecto (\texttt{Clínica Veterinaria Central}).
+    \item Asignar el usuario admin a esa clínica con rol \texttt{super\_admin}.
+    \item Asignar clientes y pacientes de ejemplo a la clínica.
+\end{itemize}
+
+\section{Tecnologías Utilizadas}
+
+\begin{table}[h]
+\centering
+\caption{Stack tecnológico del proyecto}
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\textbf{Tecnología} & \textbf{Versión} \\
+\hline
+Next.js & 15.5.18 \\
+TypeScript & 5.8 \\
+TailwindCSS & 4 \\
+pnpm & 11.5 \\
+Turborepo & 2.9 \\
+PostgreSQL & 16 \\
+Drizzle ORM & 0.41 \\
+NextAuth & 5.0.0-beta.31 \\
+Docker Compose & 3.8 \\
+Node.js & 22 \\
+\hline
+\end{tabularx}
+\end{table}
+
+Además: React 19, bcryptjs, clsx, tailwind-merge, lucide-react,
+next-themes, zod.
+
+\section{Estructura de Archivos --- Sprints 2 a 10}
+
+\begin{lstlisting}[language=bash, caption=Archivos creados en Sprints 2 a 10]
+apps/web/src/
++-- lib/actions/
+|   +-- clients.ts           # CRUD clientes (5 server actions)
+|   +-- clients-list.ts      # Lista simple para selects
+|   +-- patients.ts          # CRUD pacientes (5 server actions)
+|   +-- appointments.ts      # CRUD citas (5 server actions + status)
+|   +-- medical-records.ts   # CRUD historial clinico (4 server actions)
+|   +-- products.ts          # CRUD productos (4 server actions)
+|   +-- suppliers.ts         # CRUD proveedores (4 server actions)
+|   +-- invoices.ts          # CRUD facturas (4 server actions)
+|   +-- dashboard.ts         # Metricas del dashboard (1 server action)
+|   +-- notifications.ts     # Notificaciones (7 server actions)
+|   +-- backups.ts           # Backups (4 server actions)
+|   +-- clinics.ts           # CRUD clinicas (4 server actions)
++-- lib/
+|   +-- backup.ts            # Utilidad de pg_dump (server-only)
+|   +-- clinic.ts            # Contexto multi-tenant (server-only)
++-- components/
+|   +-- clinic-form.tsx      # Formulario reutilizable de clinicas
++-- components/
+|   +-- client-form.tsx      # Formulario reutilizable de clientes
+|   +-- patient-form.tsx     # Formulario reutilizable de pacientes
+|   +-- appointment-form.tsx # Formulario reutilizable de citas
+|   +-- medical-record-form.tsx # Formulario SOAP con vitales
+|   +-- product-form.tsx     # Formulario reutilizable de productos
+|   +-- supplier-form.tsx    # Formulario reutilizable de proveedores
+|   +-- ui/textarea.tsx      # Componente Textarea
++-- app/(dashboard)/
+|   +-- clients/             # CRUD completo (list, new, [id], edit)
+|   +-- patients/            # CRUD completo (list, new, [id], edit)
+|   +-- appointments/        # CRUD completo (list, new, [id], edit)
+|   +-- medical-records/     # CRUD completo (list, new, [id], edit)
+|   +-- inventory/           # Lista, nuevo, editar
+|   +-- suppliers/           # Lista, nuevo, editar
+|   +-- invoices/            # Lista, nuevo, detalle
+|   +-- notifications/       # Lista completa de notificaciones
+|   +-- settings/
+|   |   +-- page.tsx         # Centro de configuracion
+|   |   +-- backups/
+|   |       +-- page.tsx     # Gestion de backups
+|   +-- page.tsx             # Dashboard con metricas reales
++-- app/api/
+|   +-- clients/list/route.ts       # API lista de clientes
+|   +-- patients/by-client/[id]/route.ts  # API mascotas por dueno
+|   +-- appointments/by-patient/[id]/route.ts # API citas por paciente
+|   +-- users/vets/route.ts        # API lista de veterinarios
+|   +-- notifications/route.ts     # API notificaciones (GET)
++-- packages/db/src/schema/
+|   +-- clinics.ts           # Esquema de clinicas (multi-tenant)
++-- app/(dashboard)/settings/
+|   +-- page.tsx             # Centro de configuracion
+|   +-- backups/
+|       +-- page.tsx         # Gestion de backups
+|   +-- clinics/
+|       +-- page.tsx         # Lista de clinicas
+|       +-- new/page.tsx     # Crear clinica
+|       +-- [id]/edit/page.tsx  # Editar clinica
++-- scripts/
+|   +-- backup.sh           # Script para backup via cron
+\end{lstlisting}
+
+\section{Próximos Pasos}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Sprint 10:} Multi-tenant --- aislamiento de datos
+          entre clínicas con schema-based o row-level security.
+    \item \textbf{Sprint 11:} Despliegue en producción con Docker
+          Compose, HTTPS, y monitoreo.
+\end{enumerate}
+
+\end{document}

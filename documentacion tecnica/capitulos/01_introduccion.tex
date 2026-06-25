@@ -1,0 +1,62 @@
+\chapter{Introducci\'on}
+
+\section{Prop\'osito del Sistema}
+
+Vetrinaria es un sistema integral de gesti\'on para cl\'{\i}nicas veterinarias
+desarrollado como un monorepo moderno utilizando \textbf{Turborepo} con
+\textbf{pnpm} como gestor de paquetes. El sistema proporciona herramientas
+completas para la administraci\'on de cl\'{\i}nicas, incluyendo gesti\'on de
+clientes (due\~nos de mascotas), pacientes (animales), citas, historial
+cl\'{\i}nico (formato SOAP), facturaci\'on, inventario, vacunaci\'on,
+odontograma y notificaciones, todo con soporte multi-tenant.
+
+\section{Tecnolog\'{\i}as Principales}
+
+\begin{longtable}{|l|l|p{8cm}|}
+\hline
+\textbf{Tecnolog\'{\i}a} & \textbf{Versi\'on} & \textbf{Prop\'osito} \\
+\hline
+\endhead
+Next.js & 15.3.0 & Framework full-stack con App Router \\
+TypeScript & 5.8 & Lenguaje de programaci\'on tipado \\
+TailwindCSS & 4.0.0 & Framework de estilos utility-first \\
+pnpm & 11.5.0 & Gestor de paquetes r\'apido y eficiente \\
+Turborepo & 2.5.0+ & Orquestador de monorepo con caching inteligente \\
+PostgreSQL & 16 & Base de datos relacional \\
+Drizzle ORM & 0.41.0 & ORM tipo-safe para TypeScript \\
+NextAuth & 5.0.0-beta.31 & Autenticaci\'on con estrategia JWT \\
+React & 19.0.0 & Librer\'{\i}a de interfaz de usuario \\
+Node.js & 22+ & Entorno de ejecuci\'on \\
+Docker Compose & 3.8+ & Contenedores para desarrollo y producci\'on \\
+Framer Motion & 12.41.0 & Animaciones declarativas \\
+\hline
+\end{longtable}
+
+\section{Estructura del Documento}
+
+Este documento est\'a organizado en los siguientes cap\'{\i}tulos:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Arquitectura del Sistema} --- Monorepo, Turborepo, estructura de paquetes.
+    \item \textbf{Base de Datos} --- Esquemas, migraciones, relaciones, \'{\i}ndices y seed.
+    \item \textbf{Autenticaci\'on} --- NextAuth v5, JWT, roles y middleware.
+    \item \textbf{M\'odulos de Negocio} --- Clientes, pacientes, citas, historial cl\'{\i}nico,
+          facturaci\'on, inventario, vacunaci\'on, odontograma, dashboard,
+          notificaciones, backups.
+    \item \textbf{Multi-Tenant} --- Arquitectura de aislamiento por filas.
+    \item \textbf{UI/UX} --- Sistema de temas, shadcn/ui, animaciones.
+    \item \textbf{Despliegue} --- Docker, Nginx, Vercel.
+    \item \textbf{Testing} --- Pruebas unitarias, funcionales y de integraci\'on.
+    \item \textbf{Convenciones} --- Estilos, patrones y buenas pr\'acticas.
+\end{enumerate}
+
+\section{Objetivos del Sistema}
+
+\begin{itemize}[leftmargin=*]
+    \item Gesti\'on integral de cl\'{\i}nicas veterinarias con interfaz web moderna.
+    \item Arquitectura multi-tenant para soportar m\'ultiples cl\'{\i}nicas.
+    \item Seguridad con autenticaci\'on basada en roles (RBAC).
+    \item Responsive design para acceso desde dispositivos m\'oviles y escritorio.
+    \item Despliegue flexible: cloud (Vercel) o self-hosted (Docker).
+    \item C\'odigo tipo-safe de extremo a extremo con TypeScript y Drizzle ORM.
+\end{itemize}

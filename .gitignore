@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+
+# Build
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel
+
+# Turbo
+.turbo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Testing
+coverage/
+
+# LaTeX
+**/main.pdf
+**/main.aux
+**/main.log
+**/main.toc
+**/main.lof
+**/main.lot
+**/main.lol
+**/main.out
+**/main.fls
+**/main.fdb_latexmk
+**/*.synctex.gz
+
+# Temp screenshots
+/tmp/vet-*.png
+
+# Temp playwright
+/tmp/ss/

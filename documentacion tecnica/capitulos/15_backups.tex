@@ -1,0 +1,136 @@
+\chapter{M\'odulo de Backups}
+
+\section{Descripci\'on General}
+
+El sistema de backups permite crear, listar, restaurar y eliminar copias
+de seguridad de la base de datos PostgreSQL directamente desde la interfaz
+web, utilizando las herramientas nativas \texttt{pg\_dump} y
+\texttt{pg\_restore}.
+
+\section{Utilidad de Backup (lib/backup.ts)}
+
+El m\'odulo est\'a marcado como \texttt{'server-only'} para garantizar que
+nunca se importe desde el cliente:
+
+\begin{lstlisting}[style=typescript, caption=Backup utility - Creacion de backup]
+import 'server-only';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
+
+const execAsync = promisify(exec);
+const BACKUPS_DIR = path.join(process.cwd(), 'backups');
+const DB_URL = process.env.DATABASE_URL!;
+
+function parseDbUrl(url: string) {
+  const u = new URL(url);
+  return {
+    host: u.hostname,
+    port: u.port || '5432',
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace('/', ''),
+  };
+}
+
+export async function createBackup(): Promise<BackupInfo> {
+  await ensureBackupsDir();
+
+  const db = parseDbUrl(DB_URL);
+  const timestamp = new Date().toISOString()
+    .replace(/[:.]/g, '-').slice(0, 19);
+  const filename = `vetrinaria-${timestamp}.dump`;
+  const filepath = path.join(BACKUPS_DIR, filename);
+
+  // Ejecuta pg_dump con formato personalizado (-Fc)
+  await execAsync(
+    `PGPASSWORD="${db.password}" pg_dump -h ${db.host} ` +
+    `-p ${db.port} -U ${db.user} -d ${db.database} ` +
+    `-Fc -f "${filepath}"`,
+    { timeout: 300000 },
+  );
+
+  const stat = await fs.stat(filepath);
+
+  return { filename, size: stat.size,
+           createdAt: new Date().toISOString() };
+}
+\end{lstlisting}
+
+\subsection{Restauraci\'on}
+
+\begin{lstlisting}[style=typescript, caption=Restauracion de backup]
+export async function restoreBackup(filename: string): Promise<void> {
+  const db = parseDbUrl(DB_URL);
+  const filepath = path.join(BACKUPS_DIR, filename);
+
+  await fs.access(filepath);  // Verifica que existe
+
+  // pg_restore con flag -c (clean: elimina objetos antes de restaurar)
+  await execAsync(
+    `PGPASSWORD="${db.password}" pg_restore -h ${db.host} ` +
+    `-p ${db.port} -U ${db.user} -d ${db.database} ` +
+    `-c -Fc "${filepath}"`,
+    { timeout: 600000 },  // Timeout de 10 minutos
+  );
+}
+\end{lstlisting}
+
+\section{Server Actions}
+
+\begin{lstlisting}[style=typescript, caption=Backups - Server actions]
+// Trigger backup (acepta FormData para compatibilidad con formularios)
+export async function triggerBackup(_formData: FormData): Promise<void> {
+  await createBackup();
+  revalidatePath('/settings/backups');
+}
+
+export async function getBackups(): Promise<BackupInfo[]> {
+  return listBackups();
+}
+
+export async function removeBackup(filename: string) {
+  await deleteBackup(filename);
+  revalidatePath('/settings/backups');
+}
+
+export async function restoreFromBackup(filename: string) {
+  await restoreBackup(filename);
+  revalidatePath('/');
+}
+\end{lstlisting}
+
+\section{Interfaz Web}
+
+La p\'agina \texttt{/settings/backups} ofrece:
+
+\begin{itemize}[leftmargin=*]
+    \item Bot\'on \textbf{Crear Backup} que ejecuta pg\_dump y muestra
+          el resultado.
+    \item Lista de backups con nombre, tama\~no formateado (B, KB, MB),
+          fecha de creaci\'on.
+    \item Acciones por backup: \textbf{Restaurar} (con advertencia de
+          sobreescritura en card \'ambar) y \textbf{Eliminar}.
+    \item Panel de configuraci\'on de \textbf{Backups Autom\'aticos}
+          con instrucciones para programar via cron.
+    \item Estado vac\'{\i}o con mensaje y llamado a acci\'on.
+\end{itemize}
+
+\section{Backups Autom\'aticos (Cron)}
+
+El script \texttt{scripts/backup.sh} puede ejecutarse via cron:
+
+\begin{lstlisting}[style=bash, caption=Programar backup diario]
+# Ejecutar a las 2:00 AM todos los dias
+0 2 * * * /path/to/vetrinaria/scripts/backup.sh
+\end{lstlisting}
+
+\section{Seguridad}
+
+\begin{itemize}[leftmargin=*]
+    \item El m\'odulo \texttt{backup.ts} usa \texttt{'server-only'}.
+    \item Las server actions verifican sesi\'on mediante middleware.
+    \item La restauraci\'on muestra advertencia expl\'{\i}cita.
+    \item Timeout de 5 minutos para creaci\'on y 10 para restauraci\'on.
+\end{itemize}

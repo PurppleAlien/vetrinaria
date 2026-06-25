@@ -1,0 +1,186 @@
+\chapter{Ap\'endice: Referencia de API Routes}
+
+\section{Endpoints REST}
+
+\begin{longtable}{|l|l|l|}
+\hline
+\textbf{M\'etodo} & \textbf{Ruta} & \textbf{Prop\'osito} \\
+\hline
+\endhead
+GET & /api/health & Health check del sistema \\
+POST & /api/auth/register & Registro de nuevo usuario \\
+POST & /api/auth/signin & Inicio de sesi\'on (NextAuth) \\
+POST & /api/auth/signout & Cierre de sesi\'on (NextAuth) \\
+GET & /api/clients/list & Lista de clientes para selects \\
+GET & /api/clients/search & B\'usqueda de clientes \\
+GET & /api/patients/by-client/[id] & Pacientes por cliente \\
+GET & /api/appointments/by-patient/[id] & Citas por paciente \\
+GET & /api/users/vets & Lista de veterinarios \\
+GET & /api/notifications & Notificaciones del usuario \\
+\hline
+\end{longtable}
+
+\subsection{GET /api/health}
+
+\begin{lstlisting}[style=json, caption=Respuesta de health check]
+{
+  "status": "healthy",
+  "timestamp": "2026-06-25T10:00:00.000Z",
+  "uptime": 1234.56,
+  "version": "1.0.0",
+  "checks": { "app": "ok" }
+}
+\end{lstlisting}
+
+\subsection{POST /api/auth/register}
+
+\begin{lstlisting}[style=json, caption=Peticion de registro]
+{
+  "email": "user@example.com",
+  "password": "securepass123",
+  "firstName": "Juan",
+  "lastName": "Perez"
+}
+\end{lstlisting}
+
+Respuesta exitosa: \texttt{201 \{ "success": true \}}
+
+Respuesta con error: \texttt{400 \{ "error": "El email ya esta registrado" \}}
+
+\subsection{GET /api/notifications}
+
+\begin{lstlisting}[style=json, caption=Respuesta de notificaciones]
+{
+  "unread": 3,
+  "notifications": [
+    {
+      "id": 1,
+      "title": "Nueva cita programada",
+      "message": "Maria Garcia agendo cita para Toby...",
+      "type": "appointment",
+      "link": "/appointments",
+      "read": false,
+      "createdAt": "2026-06-25T09:00:00.000Z"
+    }
+  ]
+}
+\end{lstlisting}
+
+\section{Server Actions (Referencia R\'apida)}
+
+\subsection{Clientes (\texttt{lib/actions/clients.ts})}
+
+\begin{lstlisting}[style=typescript]
+getClients(search?: string)
+getClient(id: number)
+createClient(data: ClientInput)
+updateClient(id: number, data: ClientInput)
+deleteClient(id: number)
+\end{lstlisting}
+
+\subsection{Pacientes (\texttt{lib/actions/patients.ts})}
+
+\begin{lstlisting}[style=typescript]
+getPatients()
+getPatient(id: number)
+createPatient(data: PatientInput)
+updatePatient(id: number, data: PatientInput)
+deletePatient(id: number)
+\end{lstlisting}
+
+\subsection{Citas (\texttt{lib/actions/appointments.ts})}
+
+\begin{lstlisting}[style=typescript]
+getAppointments(date?: string)
+getAppointment(id: number)
+createAppointment(data: AppointmentInput)
+updateAppointment(id: number, data: AppointmentInput)
+updateAppointmentStatus(id: number, status: string)
+\end{lstlisting}
+
+\subsection{Historial Cl\'inico (\texttt{lib/actions/medical-records.ts})}
+
+\begin{lstlisting}[style=typescript]
+getMedicalRecords(patientId: number)
+getMedicalRecord(id: number)
+createMedicalRecord(data: MedicalRecordInput)
+updateMedicalRecord(id: number, data: MedicalRecordInput)
+\end{lstlisting}
+
+\subsection{Facturaci\'on (\texttt{lib/actions/invoices.ts})}
+
+\begin{lstlisting}[style=typescript]
+getInvoices()
+getInvoice(id: number)
+createInvoice(data: InvoiceInput)
+updateInvoiceStatus(id: number, status: string)
+\end{lstlisting}
+
+\subsection{Productos (\texttt{lib/actions/products.ts})}
+
+\begin{lstlisting}[style=typescript]
+getProducts()
+getProduct(id: number)
+createProduct(data: ProductInput)
+updateProduct(id: number, data: ProductInput)
+\end{lstlisting}
+
+\subsection{Proveedores (\texttt{lib/actions/suppliers.ts})}
+
+\begin{lstlisting}[style=typescript]
+getSuppliers()
+getSupplier(id: number)
+createSupplier(data: SupplierInput)
+updateSupplier(id: number, data: SupplierInput)
+\end{lstlisting}
+
+\subsection{Notificaciones (\texttt{lib/actions/notifications.ts})}
+
+\begin{lstlisting}[style=typescript]
+createNotification(data)
+getNotifications()
+getUnreadCount()
+markAsRead(id: number)
+markAllAsRead()
+notifyNewAppointment(data)
+notifyNewInvoice(data)
+\end{lstlisting}
+
+\subsection{Backups (\texttt{lib/actions/backups.ts})}
+
+\begin{lstlisting}[style=typescript]
+triggerBackup(formData: FormData)
+getBackups()
+removeBackup(filename: string)
+restoreFromBackup(filename: string)
+\end{lstlisting}
+
+\subsection{Cl\'inicas (\texttt{lib/actions/clinics.ts})}
+
+\begin{lstlisting}[style=typescript]
+getClinics()
+getClinic(id: number)
+createClinic(data: ClinicInput)
+updateClinic(id: number, data: ClinicInput)
+\end{lstlisting}
+
+\subsection{Odontograma (\texttt{lib/actions/dental-records.ts})}
+
+\begin{lstlisting}[style=typescript]
+getDentalRecords(patientId: number)
+getLatestDentalRecord(patientId: number)
+upsertDentalRecord(patientId: number, data)
+getDentalToothSummary(patientId: number)
+\end{lstlisting}
+
+\subsection{Vacunaci\'on (\texttt{lib/actions/vaccinations.ts})}
+
+\begin{lstlisting}[style=typescript]
+getVaccinations(patientId?: number)
+\end{lstlisting}
+
+\subsection{Dashboard (\texttt{lib/actions/dashboard.ts})}
+
+\begin{lstlisting}[style=typescript]
+getDashboardMetrics()
+\end{lstlisting}

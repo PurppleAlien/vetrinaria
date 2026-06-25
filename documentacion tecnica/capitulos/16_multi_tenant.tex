@@ -1,0 +1,131 @@
+\chapter{Arquitectura Multi-Tenant}
+
+\section{Descripci\'on General}
+
+Vetrinaria implementa una arquitectura multi-tenant basada en filas
+(row-based), donde todas las cl\'{\i}nicas comparten las mismas tablas
+pero los datos se a\'{\i}sla mediante la columna \texttt{clinic\_id}
+en todas las entidades.
+
+\section{Estrategia de Aislamiento}
+
+\subsection{Tenancy por Filas}
+
+Cada tabla de datos tiene una columna \texttt{clinic\_id} que act\'ua
+como foreign key hacia la tabla \texttt{clinics}. Las consultas
+cr\'{\i}ticas filtran por \texttt{clinic\_id} usando el contexto de la
+sesi\'on del usuario autenticado.
+
+\begin{longtable}{|l|l|l|}
+\hline
+\textbf{Tabla} & \textbf{Clinic-scoped} & \textbf{Notas} \\
+\hline
+clinics & N/A & Tabla ra\'{\i}z \\
+users & S\'{\i} & \\
+clients & S\'{\i} & \\
+patients & S\'{\i} & \\
+appointments & S\'{\i} & \\
+medical\_records & S\'{\i} & \\
+dental\_records & S\'{\i} & \\
+vaccines & S\'{\i} & \\
+vaccination\_records & S\'{\i} & \\
+products & S\'{\i} & \\
+suppliers & S\'{\i} & \\
+invoices & S\'{\i} & \\
+invoice\_items & No (hereda de invoice) & \\
+notifications & No (por usuario) & \\
+\hline
+\end{longtable}
+
+\section{Contexto Multi-Tenant en la Sesion}
+
+El ID de la cl\'{\i}nica se inyecta en el JWT durante la autenticaci\'on:
+
+\begin{lstlisting}[style=typescript, caption=JWT callback - Inyeccion de clinicId]
+async jwt({ token, user }) {
+  if (user) {
+    (token as any).role = user.role;
+    (token as any).id = user.id;
+    (token as any).clinicId = user.clinicId;
+  }
+  return token;
+},
+\end{lstlisting}
+
+La utilidad \texttt{getCurrentClinicId()} extrae este valor:
+
+\begin{lstlisting}[style=typescript, caption=Obtencion del clinicId desde la sesion]
+export async function getCurrentClinicId(): Promise<number> {
+  const session = await auth();
+  if (!session?.user?.clinicId) {
+    throw new Error('No clinic context available');
+  }
+  return session.user.clinicId;
+}
+\end{lstlisting}
+
+\section{Filtrado en Consultas}
+
+Todas las server actions que acceden a datos multi-tenant siguen este
+patr\'on:
+
+\begin{lstlisting}[style=typescript, caption=Patron de filtrado por clinica]
+export async function getClients(search?: string) {
+  const clinicId = await getCurrentClinicId();
+  const clinicFilter = eq(schema.clients.clinicId, clinicId);
+
+  return db
+    .select()
+    .from(schema.clients)
+    .where(clinicFilter)
+    .orderBy(schema.clients.name);
+}
+\end{lstlisting}
+
+\section{Rol Super Admin}
+
+El rol \texttt{super\_admin} tiene acceso global a todas las cl\'{\i}nicas
+y puede gestionar:
+
+\begin{itemize}[leftmargin=*]
+    \item Creaci\'on y edici\'on de cl\'{\i}nicas.
+    \item Acceso a datos de cualquier cl\'{\i}nica.
+    \item Configuraci\'on global del sistema.
+\end{itemize}
+
+\section{Migraci\'on Multi-Tenant}
+
+La migraci\'on \texttt{0003\_multi-tenant.sql} realiz\'o:
+
+\begin{enumerate}
+    \item Creaci\'on de la tabla \texttt{clinics}.
+    \item Inserci\'on de la cl\'{\i}nica por defecto ``Cl\'{\i}nica Principal''.
+    \item Adici\'on de \texttt{clinic\_id} nullable a 8 tablas.
+    \item Actualizaci\'on de registros existentes con el ID por defecto.
+    \item Establecimiento de NOT NULL y llaves for\'aneas.
+\end{enumerate}
+
+\section{Gesti\'on de Cl\'inicas}
+
+La p\'agina \texttt{/settings/clinics} permite a super admins gestionar
+cl\'{\i}nicas:
+
+\begin{itemize}[leftmargin=*]
+    \item Lista de cl\'{\i}nicas con nombre, slug, email.
+    \item Creaci\'on con validaci\'on de slug (\texttt{[a-z0-9-]+}).
+    \item Edici\'on de datos y configuraci\'on.
+\end{itemize}
+
+\subsection{Server Actions}
+
+\begin{lstlisting}[style=typescript, caption=Clinicas - Server actions con Zod]
+const clinicSchema = z.object({
+  name: z.string().min(1, 'El nombre es obligatorio'),
+  slug: z.string().min(1, 'El slug es obligatorio')
+    .regex(/^[a-z0-9-]+$/,
+           'Solo minusculas, numeros y guiones'),
+  email: z.string().email().optional().or(z.literal('')),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
+\end{lstlisting}

@@ -1,0 +1,165 @@
+\chapter{Convenciones y Patrones de Desarrollo}
+
+\section{Patrones de C\'odigo}
+
+\subsection{Server Actions}
+
+Todas las server actions siguen estas convenciones:
+
+\begin{lstlisting}[style=typescript, caption=Patron de Server Action]
+'use server';                          // 1. Directiva
+
+import { db, schema } from '@vetrinaria/db';
+import { eq } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
+import { getCurrentClinicId } from '@/lib/clinic';
+
+export async function getItems() {     // 2. Prefijo get para lecturas
+  const clinicId = await getCurrentClinicId();  // 3. Contexto clinica
+  return db                             // 4. Query Drizzle
+    .select()
+    .from(schema.items)
+    .where(eq(schema.items.clinicId, clinicId))
+    .orderBy(schema.items.name);
+}
+
+export async function createItem(data) { // 5. Prefijo create/update/delete
+  const clinicId = await getCurrentClinicId();
+  await db.insert(schema.items).values({ ... });
+  revalidatePath('/items');             // 6. Revalidacion de cache
+}
+\end{lstlisting}
+
+\subsection{Tipos de Datos}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Con Zod:} Cuando hay validaci\'on de entrada significativa
+          (clientes, cl\'{\i}nicas). Usar \texttt{z.infer} para tipos.
+    \item \textbf{Sin Zod:} Para casos simples donde el tipado de TypeScript
+          es suficiente (pacientes, citas, facturas).
+    \item \textbf{Enums:} Definidos como \texttt{const as const} arrays y
+          usados como \texttt{text()} con restricci\'on de enum en Drizzle.
+\end{itemize}
+
+\subsection{Manejo de Enums en Drizzle}
+
+Los enums de PostgreSQL se definen como arrays de TypeScript y se referencian
+en el esquema:
+
+\begin{lstlisting}[style=typescript, caption=Patron de enums en Drizzle]
+export const appointmentStatusEnum = [
+  'scheduled', 'confirmed', 'checked_in',
+  'in_exam', 'checked_out', 'cancelled', 'no_show',
+] as const;
+
+status: text('status', { enum: appointmentStatusEnum })
+  .notNull().default('scheduled')
+\end{lstlisting}
+
+Los cast con \texttt{as any} son necesarios al insertar strings en campos
+con restricci\'on de enum.
+
+\subsection{JSONB Tipado}
+
+Los campos JSONB usan \texttt{\$type<T>()} para tipado en TypeScript:
+
+\begin{lstlisting}[style=typescript, caption=Patron JSONB tipado]
+weight: jsonb('weight')
+  .$type<{ value: number; date: string }[]>()
+  .default([]),
+\end{lstlisting}
+
+\subsection{\'Indices}
+
+Cada tabla tiene \'{\i}ndices para \texttt{clinic\_id} y las columnas
+m\'as consultadas. Las tablas con consultas compuestas tienen \'{\i}ndices
+compuestos (ej: \texttt{appointments\_date\_status\_idx}).
+
+\section{Convenciones de Nomenclatura}
+
+\subsection{Archivos y Directorios}
+
+\begin{longtable}{|l|l|}
+\hline
+\textbf{Elemento} & \textbf{Convenci\'on} \\
+\hline
+Directorios de p\'aginas & kebab-case (\texttt{medical-records}) \\
+Archivos de esquemas DB & snake\_case (\texttt{medical\_records.ts}) \\
+Archivos de componentes & kebab-case (\texttt{appointment-form.tsx}) \\
+Archivos de server actions & kebab-case (\texttt{medical-records.ts}) \\
+Directorios de API routes & kebab-case con [params] \\
+\hline
+\end{longtable}
+
+\subsection{C\'odigo}
+
+\begin{longtable}{|l|l|}
+\hline
+\textbf{Elemento} & \textbf{Convenci\'on} \\
+\hline
+Tablas Drizzle & snake\_case en DB, camelCase en TypeScript \\
+Columnas Drizzle & snake\_case en DB, camelCase en TypeScript \\
+Funciones & camelCase \\
+Tipos/interfaces & PascalCase \\
+Constantes compartidas & UPPER\_CASE \\
+Props de componentes & PascalCase \\
+\hline
+\end{longtable}
+
+\section{Internacionalizaci\'on}
+
+\begin{itemize}[leftmargin=*]
+    \item UI en espa\~nol (etiquetas, mensajes, documentaci\'on).
+    \item Enums en ingl\'es en base de datos, con traducciones en
+          \texttt{@vetrinaria/shared/constants}.
+    \item Datos semilla con nombres y direcciones en espa\~nol.
+\end{itemize}
+
+\section{Estructura de P\'aginas}
+
+Cada m\'odulo de negocio sigue esta estructura:
+
+\begin{lstlisting}[style=bash, caption=Estructura tipica de modulo de negocio]
+app/(dashboard)/
++-- modulo/
+|   +-- page.tsx          # Listado
+|   +-- new/
+|   |   +-- page.tsx      # Creacion
+|   +-- [id]/
+|       +-- page.tsx      # Detalle
+|       +-- edit/
+|           +-- page.tsx  # Edicion
++-- lib/actions/
+    +-- modulo.ts          # Server actions
++-- components/
+    +-- modulo-form.tsx   # Formulario reutilizable
+\end{lstlisting}
+
+\section{Seguridad}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Server-only:} M\'odulos sensibles (backup, clinic context)
+          marcados con \texttt{'server-only'}.
+    \item \textbf{Contrase\~nas:} Hasheadas con bcryptjs (12 rondas).
+    \item \textbf{Autenticaci\'on:} NextAuth con middleware que protege
+          todas las rutas del dashboard.
+    \item \textbf{Multi-tenant:} Filtrado por \texttt{clinic\_id} en todas
+          las consultas.
+    \item \textbf{Credenciales de prueba:} Incluidas en la p\'agina de login
+          para facilitar desarrollo.
+\end{itemize}
+
+\section{Rendimiento}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{\'Indices:} 38 \'{\i}ndices B-tree en PostgreSQL.
+    \item \textbf{Consultas paralelas:} \texttt{Promise.all} para consultas
+          independientes (dashboard, m\'ultiples fetches).
+    \item \textbf{Caching:} \texttt{cache()} de React para deduplicaci\'on
+          de datos del servidor.
+    \item \textbf{Server Components:} M\'aximo renderizado en servidor,
+          m\'{\i}nimo JavaScript de cliente.
+    \item \textbf{PNPM:} Instalaci\'on eficiente de dependencias con
+          content-addressable store.
+    \item \textbf{Turborepo:} Cache de build para evitar recomputaciones.
+\end{itemize}

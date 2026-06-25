@@ -1,0 +1,12 @@
+{
+  "name": "@vetrinaria/shared",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./types": "./src/types.ts",
+    "./constants": "./src/constants.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}

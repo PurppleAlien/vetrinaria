@@ -1,0 +1,192 @@
+\documentclass[12pt,a4paper,twoside]{book}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{verbatim}
+\usepackage{parskip}
+\usepackage{float}
+\usepackage{multirow}
+\geometry{
+  left=2.5cm,
+  right=2.5cm,
+  top=3cm,
+  bottom=3cm,
+  bindingoffset=0.5cm
+}
+
+\definecolor{codebg}{rgb}{0.95,0.95,0.95}
+\definecolor{codeblue}{rgb}{0.2,0.2,0.6}
+\definecolor{codegreen}{rgb}{0.1,0.5,0.1}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codeorange}{rgb}{0.8,0.4,0.1}
+
+\lstdefinestyle{typescript}{
+    language={},
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small\color{codeblue},
+    commentstyle=\color{codegreen},
+    stringstyle=\color{codeorange},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b,
+    numbers=left,
+    numberstyle=\tiny\color{codegray},
+    stepnumber=1,
+    numbersep=5pt,
+    showstringspaces=false,
+    literate={_}{\_}1,
+}
+
+\lstdefinestyle{sql}{
+    language=SQL,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegreen},
+    stringstyle=\color{codeorange},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b,
+    numbers=left,
+    numberstyle=\tiny\color{codegray},
+    numbersep=5pt,
+    literate={_}{\_}1,
+}
+
+\lstdefinestyle{bash}{
+    language=bash,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b,
+    numbers=left,
+    numberstyle=\tiny\color{codegray},
+    numbersep=5pt,
+    literate={_}{\_}1,
+}
+
+\lstdefinestyle{yaml}{
+    language=bash,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b,
+    literate={_}{\_}1,
+}
+
+\lstdefinestyle{css}{
+    language={},
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    stringstyle=\color{codeorange},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b,
+    literate={_}{\_}1,
+}
+
+\lstdefinestyle{json}{
+    language={},
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    frame=single,
+    breaklines=true,
+    tabsize=2,
+    captionpos=b,
+    literate={_}{\_}1,
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+    citecolor=green!50!black,
+    bookmarks=true,
+    bookmarksnumbered=true,
+    pdftitle={Vetrinaria - Documentacion Tecnica},
+    pdfauthor={Vetrinaria Team},
+    pdfsubject={Sistema de Gestion para Clinicas Veterinarias},
+}
+
+\setlength{\headheight}{14.61858pt}
+\addtolength{\topmargin}{-2.61858pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\leftmark}
+\fancyhead[RO]{\rightmark}
+\fancyfoot[LE,RO]{\thepage}
+\fancyfoot[CE,CO]{\footnotesize Vetrinaria - Documentacion Tecnica}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\title{\textbf{Vetrinaria}}
+\author{Documentacion Tecnica}
+\date{\today}
+
+\begin{document}
+
+\frontmatter
+
+\input{portada.tex}
+\tableofcontents
+\listoffigures
+\listoftables
+\lstlistoflistings
+
+\mainmatter
+
+\input{capitulos/01_introduccion.tex}
+\input{capitulos/02_arquitectura.tex}
+\input{capitulos/03_base_de_datos.tex}
+\input{capitulos/04_autenticacion.tex}
+\input{capitulos/05_clientes.tex}
+\input{capitulos/06_pacientes.tex}
+\input{capitulos/07_citas.tex}
+\input{capitulos/08_historial_clinico.tex}
+\input{capitulos/09_facturacion.tex}
+\input{capitulos/10_inventario_proveedores.tex}
+\input{capitulos/11_vacunacion.tex}
+\input{capitulos/12_odontograma.tex}
+\input{capitulos/13_dashboard.tex}
+\input{capitulos/14_notificaciones.tex}
+\input{capitulos/15_backups.tex}
+\input{capitulos/16_multi_tenant.tex}
+\input{capitulos/17_ui_ux.tex}
+\input{capitulos/18_despliegue.tex}
+\input{capitulos/19_testing.tex}
+\input{capitulos/20_convenciones.tex}
+
+\backmatter
+\appendix
+\input{capitulos/apendice_dependencias.tex}
+\input{capitulos/apendice_api.tex}
+
+\end{document}
