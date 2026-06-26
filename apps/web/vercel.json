@@ -1,4 +1,0 @@
-{
-  "buildCommand": "pnpm next build",
-  "installCommand": "cd .. && pnpm install --no-frozen-lockfile"
-}
